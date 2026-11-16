@@ -1880,6 +1880,7 @@ end
 function S.AppInbox()
   local st = S.app
   st.present = S.AppPresent()
+  if st.present and type(rawget(_G, "SterlingQuestAccountDB")) == "table" then SterlingQuestAccountDB.appSeen = true end
   local ib = rawget(_G, "SterlingQuestSync_Inbox")
   if type(ib) ~= "table" or ib.format ~= 1 then return end
   st.written = tonumber(ib.written) or 0
@@ -2016,6 +2017,43 @@ function S.AppProblem(name)
   local p = S.FindPartner(name)
   if not (p and p.guid) then return nil end
   return S.app.problems and S.app.problems[p.guid]
+end
+-- The app is installed but its SterlingQuestSync helper add-on isn't running in this session.
+-- WoW only finds new add-ons when the game starts, so after the app installs it a /reload isn't enough.
+-- Signs the app is there: the game knows the add-on (unticked or not loadable), it ran here before on
+-- this account, or there are pairings made in the app.
+S.APP_ADDON_MISSING = "Sterling Quest Sync add-on isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select."
+function S.AppAddonMissing()
+  if S.AppPresent() then return false end
+  local info = (C_AddOns and C_AddOns.GetAddOnInfo) or rawget(_G, "GetAddOnInfo")
+  if info then
+    local ok, name, _, _, _, reason = pcall(info, "SterlingQuestSync")
+    if ok and name and reason ~= "MISSING" then return true end
+  end
+  local acc = rawget(_G, "SterlingQuestAccountDB")
+  if type(acc) == "table" and acc.appSeen then return true end
+  local ap = SterlingQuestDB and SterlingQuestDB.appPairs
+  if type(ap) == "table" and next(ap) ~= nil then return true end
+  return false
+end
+-- One status per partner, worded like the Sterling Quest Sync app (0.1.22). Returns key, text, r, g, b.
+--   syncing  "Syncing..."                           only while a live in-game sync with them is running
+--   current  "Up to date"                           we have their latest copy and it's loaded
+--   paired   "Paired. Waiting for their next save"  paired in the app, no copy from them yet
+-- plus "Sync disabled", "missing key, resync" and "never synced".
+-- (The app's "New copy, /reload to see it" can't happen in game: the app's inbox is only read at login and
+-- /reload, and everything in it is loaded right then.)
+function S.PartnerSyncState(name)
+  local p = S.FindPartner(name)
+  if not p then return nil end
+  if not p.on then return "off", "Sync disabled", .55, .53, .48 end
+  if S.AppProblem(p.name) then return "key", S.Mark("warn") .. "missing key, resync", .95, .77, .42 end
+  local pr = S.sync and S.sync.prog
+  local live = (S.pending and S.pending[p.name]) or (pr and pr.who == p.name and pr.t and GetTime() - pr.t < 6 and pr.got < pr.n)
+  if live then return "syncing", "Syncing...", .95, .77, .42 end
+  if S.LastSynced(p.name) then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
+  if p.guid and S.AppPairKey and S.AppPairKey(p.guid) then return "paired", "Paired. Waiting for their next save", .84, .86, .91 end
+  return "never", "never synced", .55, .53, .48
 end
 
 S.found = {}

@@ -875,6 +875,8 @@ local function BuildSync(page)
   -- the Sterling Quest Sync app (only when its companion add-on is installed)
   page.appL = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appL:SetPoint("TOPLEFT", 4, -67); page.appL:SetText("App"); page.appL:SetTextColor(S.LabelColor())
   page.v.app = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.app:SetPoint("TOPLEFT", 66, -67); page.v.app:SetPoint("RIGHT", -4, 0); page.v.app:SetJustifyH("LEFT"); page.v.app:SetWordWrap(false)
+  -- the app is installed but its helper add-on isn't running (a new add-on needs a full game restart)
+  page.appWarn = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appWarn:SetPoint("TOPLEFT", 4, -67); page.appWarn:SetPoint("RIGHT", -4, 0); page.appWarn:SetJustifyH("LEFT"); page.appWarn:SetJustifyV("TOP"); page.appWarn:SetWordWrap(true); page.appWarn:SetTextColor(.95, .77, .42); page.appWarn:Hide()
   page.progBg = st:CreateTexture(nil, "ARTWORK"); page.progBg:SetPoint("TOPLEFT", page.v.last, "BOTTOMLEFT", 0, -1); page.progBg:SetPoint("RIGHT", -4, 0); page.progBg:SetHeight(2); page.progBg:SetColorTexture(.2, .18, .14, 1); page.progBg:Hide()
   page.prog = st:CreateTexture(nil, "OVERLAY"); page.prog:SetPoint("TOPLEFT", page.progBg, "TOPLEFT", 0, 0); page.prog:SetHeight(2); page.prog:SetColorTexture(.49, .89, .64, 1); page.prog:Hide()
   -- Sync all at the bottom
@@ -1043,15 +1045,9 @@ local function UpdateSync(page)
     if on then r.stat:SetText(S.Mark("good") .. "Online"); r.stat:SetTextColor(.44, .84, .54)
     elseif how then r.stat:SetText("Offline"); r.stat:SetTextColor(.55, .53, .48)
     else r.stat:SetText(S.Mark("warn") .. "Can't tell"); r.stat:SetTextColor(.91, .72, .35) end
-    -- sync age, or that sync is off
-    local ls = S.LastSynced(p.name)
-    if not p.on then r.last:SetText("Sync disabled"); r.last:SetTextColor(.55, .53, .48)
-    elseif S.AppProblem and S.AppProblem(p.name) then r.last:SetText(S.Mark("warn") .. "missing key, resync"); r.last:SetTextColor(.95, .77, .42)
-    elseif ls then
-      local stale = time() - ls > 86400
-      r.last:SetText((stale and S.Mark("warn") or "") .. "synced " .. agoShort(ls))
-      if stale then r.last:SetTextColor(.85, .54, .48) else r.last:SetTextColor(.6, .58, .52) end
-    else r.last:SetText("never synced"); r.last:SetTextColor(.55, .53, .48) end
+    -- sync state, worded like the Sterling Quest Sync app (when they last synced is on the hover card)
+    local _, stxt, sr, sg, sb2 = S.PartnerSyncState(p.name)
+    r.last:SetText(stxt or ""); r.last:SetTextColor(sr or .55, sg or .53, sb2 or .48)
     r.sel:SetShown(page.selected == p.name); r.sel:SetAlpha(1)
     r.line:SetShown(shownRows < page.VISIBLE)
     r:Show()
@@ -1100,6 +1096,9 @@ local function UpdateSync(page)
     local a = S.app or {}
     local present = S.AppPresent and S.AppPresent()
     page.appL:SetShown(present); page.v.app:SetShown(present)
+    local missing = not present and S.AppAddonMissing and S.AppAddonMissing()
+    page.appWarn:SetShown(missing and true or false)
+    if missing then page.appWarn:SetText(S.Mark("warn") .. S.APP_ADDON_MISSING) end
     if present then
       local t
       if not a.written or a.written == 0 then t = "|cff8a93a8Sterling Quest Sync: waiting for the app|r"
