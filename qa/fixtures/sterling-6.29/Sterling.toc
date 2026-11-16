@@ -1,0 +1,18 @@
+## Interface: 16001, 11509
+## Title: Sterling Quest Tracker
+## Notes: Record a play session, send it to a friend, and they follow your exact path with an arrow, a map trail, and playback.
+## Author: Sterling
+## Version: 6.29
+## IconTexture: Interface\AddOns\Sterling\Media\icon
+## SavedVariablesPerCharacter: SterlingQuestDB, SterlingDB
+## OptionalDeps: TomTom, Questie
+
+Core.lua
+Theme.lua
+Record.lua
+Map.lua
+Reveal.lua
+Viewer.lua
+UI.lua
+Status.lua
+Catchup.lua

@@ -1,0 +1,125 @@
+import sim, re
+def clean(c): return re.sub(r"\|c\w{8}|\|r|\|T.-\|t ?", "", str(c))
+ok = True
+def check(name, cond, extra=""):
+    global ok
+    print(("PASS " if cond else "FAIL ") + name + (("  " + str(extra)) if extra and not cond else ""))
+    if not cond: ok = False
+ACC = 'SterlingQuestAccountDB = { welcomed = true, tour = true, hints = { catchup = true, path = true, sessions = true, sync = true }, told = { Questie = true, TomTom = true } }'
+A = sim.Player("Kaelith Emberfall", [(188, "Tiger Mastery"), (200, "Raptor Mastery")], [185, 186, 187], account=ACC)
+B = sim.Player("Brannoc Ashvale", [(200, "Raptor Mastery")], [185, 186, 187, 188] + list(range(1000, 1700)) + list(range(3000, 9000, 7)), account=ACC, level=39)
+C = sim.Player("Mallory", [], [1], account=ACC)
+# never online together: nothing travels on the wire in this test
+def nowire(): sim.wire.clear()
+A.S.AddPartner("Brannoc Ashvale", True); B.S.AddPartner("Kaelith Emberfall", True)
+exp = lambda P, who, full=False: P.L.eval('function(S, who, full) local parts, info = S.OfflineExport(who, full); if not parts then return nil, info end; local t = {}; for i, p in ipairs(parts) do t[i] = p end; return table.concat(t, "\\n"), info end')(P.S, who, full)
+def imp(P, text, confirm=True):
+    r = P.L.eval('''function(S, text, confirm)
+      local packed, got, need = S.OfflineCollect(text)
+      if not packed then return "partial " .. got .. "/" .. need end
+      local d, err = S.OfflineRead(packed)
+      if not d then return "unreadable: " .. tostring(err) end
+      local verdict, why = S.OfflineCheck(d)
+      if not verdict then return "refused: " .. tostring(why) end
+      if verdict == "confirm" and not confirm then return "needs confirm: " .. tostring(why) end
+      local ok, line = S.OfflineApply(d, verdict)
+      return (ok and (verdict .. ": ") or "failed: ") .. tostring(line)
+    end''')(P.S, text, confirm)
+    return clean(r)
+check("key state starts as half (ours only)", A.S.KeyState("Brannoc Ashvale") == "half")
+s1, i1 = exp(A, "Brannoc Ashvale")
+check("first string is a full copy, unsigned", i1.kind == "F" and not i1.signed, (i1.kind, i1.signed))
+check("string format STO1:i/n:id:data", bool(re.match(r"^STO1:1/\d+:[0-9a-f]{4}:[A-Za-z0-9()]+$", s1.split("\n")[0])), s1[:60])
+r = imp(B, s1, confirm=False)
+check("unsigned full copy asks first", r.startswith("needs confirm") and "isn't signed" in r, r)
+r = imp(B, s1)
+check("confirmed: B imports A's full copy", r.startswith("confirm: Imported") and "2 quests in log, 3 done" in r, r)
+check("B now holds A's key half (trust on first use)", B.S.KeyState("Kaelith Emberfall") == "signed")
+check("B's copy of A is right", B.L.eval('function(S) local s = S.snaps["Kaelith Emberfall"]; return s and s.log[188] ~= nil and s.completed[186] == true and s.source == "offline" end')(B.S))
+# B answers: still unsigned from A's side (A has no half from B yet), carries B's half and acks A's copy
+s2, i2 = exp(B, "Kaelith Emberfall")
+check("B's first string back is a full copy (A can't check a signature yet)", i2.kind == "F")
+big = len(s2)
+print("   B's full copy (1562 finished quests): %d characters in %d part(s); raw %d bytes" % (big, len(s2.split("\n")), i2.raw))
+check("long string is split under Discord's 2000 limit", all(len(p) <= 2000 for p in s2.split("\n")) and len(s2.split("\n")) >= 2, [len(p) for p in s2.split("\n")])
+parts = s2.split("\n")
+r = imp(A, parts[0])
+check("one part alone: says which are missing", r.startswith("partial 1/"), r)
+r = imp(A, parts[0] + parts[1][:-40])
+check("a part with its end cut off is caught, not half-imported", r.startswith("partial") or r.startswith("unreadable"), r)
+r = imp(A, parts[0] + parts[1][:-40] + parts[2])
+check("  ...even when every part is present", r.startswith("unreadable") and "damaged" in r, r)
+r = imp(A, " some chat junk " + parts[-1] + "   " + "".join(reversed(parts[:-1])) + " trailing")
+check("parts in any order, glued together with junk: imports", r.startswith("confirm: Imported") and "1562 done" in r, r)
+check("A now signed too", A.S.KeyState("Brannoc Ashvale") == "signed")
+check("A's string was confirmed by B's ack", A.ev('SterlingQuestDB.offline["Brannoc Ashvale"].base ~= nil and SterlingQuestDB.offline["Brannoc Ashvale"].pend == nil'))
+# from here on: signed changes only
+A.lua('QLOG = { { id = 200, title = "Raptor Mastery" } }; QDONE[188] = true')
+s3, i3 = exp(A, "Brannoc Ashvale")
+check("next string is signed changes since the confirmed copy", i3.kind == "D" and i3.signed and i3.changes == 2, (i3.kind, i3.signed, i3.changes))
+check("changes string is short", len(s3) < 200, len(s3))
+r = imp(B, s3, confirm=False)
+check("signed changes import with no question", r.startswith("ok: Imported 2 changes"), r)
+check("B sees A's turn-in", B.L.eval('function(S) local s = S.snaps["Kaelith Emberfall"]; return s.completed[188] == true and s.log[188] == nil end')(B.S))
+r = imp(B, s3, confirm=False)
+check("the same string twice: already have it", "already have this update" in r, r)
+# not confirmed yet, more changes: the next string still starts from the last CONFIRMED copy
+A.lua('QDONE[200] = true; QLOG = {}')
+s4, i4 = exp(A, "Brannoc Ashvale")
+check("unconfirmed: next string still builds on the confirmed copy", i4.kind == "D" and i4.base == i3.base, (i4.base, i3.base))
+r = imp(B, s4, confirm=False)
+check("B (who took the middle one) is told to ask for a full copy", r.startswith("refused") or ("continues from" in r and "full copy" in r), r)
+check("  ...with the update numbers", "continues from" in r, r)
+s5, i5 = exp(A, "Brannoc Ashvale", True)
+check("Full copy button gives a signed full copy", i5.kind == "F" and i5.signed)
+r = imp(B, s5, confirm=False)
+check("signed full copy imports with no question", r.startswith("ok: Imported"), r)
+# tampering and misuse
+bad = s3[:-6] + ("A" if s3[-6] != "A" else "B") + s3[-5:]
+r = imp(B, bad, confirm=False)
+check("a damaged string is refused", r.startswith("unreadable") or r.startswith("refused"), r)
+r = imp(C, s5)
+check("someone else's string: made for another character", "made for Brannoc Ashvale" in r, r)
+r = imp(A, s5)
+check("your own string pasted back: says so", "your own string" in r, r)
+# forged: Mallory pretends to be Kaelith Emberfall with changes (no key)
+forged = C.L.eval('''function(S)
+  local lib = S.LibDeflate()
+  local header = table.concat({ "O1", S.VERSION, "Kaelith Emberfall", "Brannoc Ashvale", "D", 0, "", "0.2.30" }, "^")
+  local body = "1^999^60^^^1,2,3^x"
+  return "STO1:1/1:beef:" .. lib:EncodeForPrint(lib:CompressDeflate("0123456789abcdef" .. "\\n" .. S.Sign("STQ", header .. "\\n" .. body) .. "\\n" .. header .. "\\n" .. body))
+end''')(C.S)
+r = imp(B, forged)
+check("forged changes with a made-up signature are refused", r.startswith("refused") and "signature" in r, r)
+forgedFull = C.L.eval('''function(S)
+  local lib = S.LibDeflate()
+  local header = table.concat({ "O1", S.VERSION, "Kaelith Emberfall", "Brannoc Ashvale", "F", 0, "deadbeefdeadbeef", "0.2.30" }, "^")
+  local body = "STR3^Kaelith Emberfall^R^60^^1,2,3^1^=^5^x^o"
+  return "STO1:1/1:beef:" .. lib:EncodeForPrint(lib:CompressDeflate("" .. "\\n" .. S.Sign("STQ", header .. "\\n" .. body) .. "\\n" .. header .. "\\n" .. body))
+end''')(C.S)
+r = imp(B, forgedFull, confirm=False)
+check("forged unsigned full copy can't slip in: the player is asked", r.startswith("needs confirm"), r)
+# a string from someone not on the list
+C.S.AddPartner("Brannoc Ashvale", True)
+s6, i6 = exp(C, "Brannoc Ashvale")
+r = imp(B, s6, confirm=False)
+check("string from a stranger: asks, and says it adds them", r.startswith("needs confirm") and "isn't on your Sync list" in r, r)
+r = imp(B, s6)
+check("confirmed: stranger added and imported", r.startswith("confirm: Imported") and B.L.eval('function(S) return S.FindPartner("Mallory") ~= nil end')(B.S), r)
+# protocol mismatch
+C.L.eval('function(S) S.VERSION = 7 end')(C.S)
+s7, _ = exp(C, "Brannoc Ashvale", True)
+r = imp(B, s7)
+check("string from a different sync version: Can't sync, update needed", "Can't sync: update needed" in r, r)
+C.L.eval('function(S) S.VERSION = 6 end')(C.S)
+# live sync afterwards carries on
+nowire(); sim.pump(3); nowire()
+A.lua('SterlingQuestDB.opts.chat_sync = 1'); A.chat()
+A.S.SyncWith("Brannoc Ashvale", "quick"); sim.pump(20)
+ac = [clean(c) for c in A.chat()]
+check("a live sync after offline strings completes", any("Sync complete" in c for c in ac), ac)
+check("no Lua errors", A.errors() + B.errors() + C.errors() == 0)
+# removing a partner clears their offline state
+A.S.RemovePartner("Brannoc Ashvale")
+check("removing a partner clears offline state", A.ev('SterlingQuestDB.offline["Brannoc Ashvale"] == nil'))
+print("ALL OK" if ok else "SOME FAILED")

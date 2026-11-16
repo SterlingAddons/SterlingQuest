@@ -1,0 +1,25 @@
+## Interface: 16001, 11509
+## Title: Sterling Quest Tracker
+## Notes: Sync quest logs with friends, catch up on what they have done, and follow a recorded path with an arrow, a map trail and playback. Works with Questie and TomTom.
+## Author: Sterling
+## Version: 0.3.09
+## X-Build: 309
+## X-Credits: Works with Questie (the Questie team) and TomTom (Cladhaire). Bundles ChatThrottleLib (Mikk), LibDeflate (Haoqian He) and LibStub.
+## IconTexture: Interface\AddOns\Sterling\Media\icon
+## SavedVariables: SterlingQuestAccountDB
+## SavedVariablesPerCharacter: SterlingQuestDB, SterlingDB
+## OptionalDeps: TomTom, Questie, SterlingQuestSync
+
+Libs\LibStub\LibStub.lua
+Libs\ChatThrottleLib\ChatThrottleLib.lua
+Libs\LibDeflate\LibDeflate.lua
+Core.lua
+Theme.lua
+Record.lua
+Map.lua
+Reveal.lua
+Viewer.lua
+UI.lua
+Status.lua
+Catchup.lua
+Guide.lua

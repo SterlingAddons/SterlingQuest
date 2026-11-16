@@ -1,0 +1,6 @@
+<Bindings>
+  <Binding name="STERLINGQUEST_RECORD" header="STERLINGQUEST" category="ADDONS">SterlingQuest_Bind("record")</Binding>
+  <Binding name="STERLINGQUEST_DONE" category="ADDONS">SterlingQuest_Bind("done")</Binding>
+  <Binding name="STERLINGQUEST_MAP" category="ADDONS">SterlingQuest_Bind("map")</Binding>
+  <Binding name="STERLINGQUEST_WINDOW" category="ADDONS">SterlingQuest_Bind("window")</Binding>
+</Bindings>
