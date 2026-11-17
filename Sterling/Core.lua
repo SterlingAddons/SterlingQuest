@@ -47,7 +47,7 @@ function S.Safe(what, fn, ...)
   if GetTime() - lastErr > 30 then
     lastErr = GetTime()
     msg("|cffff6060Hit a snag in " .. what .. ":|r " .. tostring(err):sub(1, 160))
-    if errCount > 5 then msg("If this keeps happening, /reload and report the message above on Sterling's GitHub page.") end
+    if errCount > 5 then msg("If this keeps happening, /reload. If it still happens, report the message above on Sterling's GitHub page.") end
   end
   return false
 end
@@ -2022,7 +2022,7 @@ end
 -- WoW only finds new add-ons when the game starts, so after the app installs it a /reload isn't enough.
 -- Signs the app is there: the game knows the add-on (unticked or not loadable), it ran here before on
 -- this account, or there are pairings made in the app.
-S.APP_ADDON_MISSING = "Sterling Quest Sync add-on isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select."
+S.APP_ADDON_MISSING = "The app's helper add-on (Sterling Quest Sync) isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select."
 function S.AppAddonMissing()
   if S.AppPresent() then return false end
   local info = (C_AddOns and C_AddOns.GetAddOnInfo) or rawget(_G, "GetAddOnInfo")
@@ -2036,25 +2036,41 @@ function S.AppAddonMissing()
   if type(ap) == "table" and next(ap) ~= nil then return true end
   return false
 end
--- One status per partner, worded like the Sterling Quest Sync app (0.1.22). Returns key, text, r, g, b.
---   syncing  "Syncing..."                           only while a live in-game sync with them is running
---   current  "Up to date"                           we have their latest copy and it's loaded
---   paired   "Paired. Waiting for their next save"  paired in the app, no copy from them yet
--- plus "Sync disabled", "missing key, resync" and "never synced".
--- (The app's "New copy, /reload to see it" can't happen in game: the app's inbox is only read at login and
--- /reload, and everything in it is loaded right then.)
+-- One status per partner, worded like the Sterling Quest Sync app (0.1.24). Returns key, text, r, g, b.
+--   syncing   "Syncing..."                           only while a live in-game sync with them is running
+--   current   "Up to date" (green)                   we have their latest progress and it's loaded
+--   paired    "Paired. Waiting for their next save"  paired in the app, no progress from them yet
+--   pairsoon  "Pairs when you're both next online"   both have the app; Sterling pairs them next time both are in game
+--   noapp     "Doesn't have the app yet" (red)       they told us they don't have it (live sync still works)
+--   unknown   "Not online with you yet"              we don't know about their app yet
+-- plus "Sync disabled", "Missing key, resync" and "Not synced yet" (no app on either side we know of).
+-- The app's "New copy, /reload to see it" can't happen in game: the app's new progress is only read at login
+-- and /reload, and everything there is loaded right then. Only the app can show it.
 function S.PartnerSyncState(name)
   local p = S.FindPartner(name)
   if not p then return nil end
   if not p.on then return "off", "Sync disabled", .55, .53, .48 end
-  if S.AppProblem(p.name) then return "key", S.Mark("warn") .. "missing key, resync", .95, .77, .42 end
+  if S.AppProblem(p.name) then return "key", S.Mark("warn") .. "Missing key, resync", .95, .77, .42 end
   local pr = S.sync and S.sync.prog
   local live = (S.pending and S.pending[p.name]) or (pr and pr.who == p.name and pr.t and GetTime() - pr.t < 6 and pr.got < pr.n)
   if live then return "syncing", "Syncing...", .95, .77, .42 end
-  if S.LastSynced(p.name) then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
-  if p.guid and S.AppPairKey and S.AppPairKey(p.guid) then return "paired", "Paired. Waiting for their next save", .84, .86, .91 end
-  return "never", "never synced", .55, .53, .48
+  local have = S.LastSynced(p.name)
+  local paired = p.guid and S.AppPairKey and S.AppPairKey(p.guid)
+  if paired then
+    if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
+    return "paired", "Paired. Waiting for their next save", .84, .86, .91
+  end
+  -- app statuses only mean something when you have the app yourself
+  if not S.AppPresent() then
+    if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
+    return "never", "Not synced yet", .55, .53, .48
+  end
+  if type(p.app) == "string" then return "pairsoon", "Pairs when you're both next online", .95, .77, .42 end
+  if p.app == false then return "noapp", S.Mark("bad") .. "Doesn't have the app yet", .95, .48, .45 end
+  if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
+  return "unknown", "Not online with you yet", .84, .86, .91
 end
+S.NOAPP_TIP = "You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync app."
 
 S.found = {}
 -- Invites we sent, kept in saved data for a day: an accept that comes late (the other side was in a
@@ -2903,13 +2919,13 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
   end
   if ev == "CHAT_MSG_ADDON" then onAddonMessage(a1, a2, a3, a4) return end
   if ev == "CHAT_MSG_SYSTEM" then if S.SyncSystemMessage then S.SyncSystemMessage(a1) end return end
-  if ev == "PLAYER_LOGOUT" then if S.testMode then S.TestModeOff(true) end; S.Safe("sync app outbox", S.AppOutbox); S.RecordFlush(); if S.PackFlush then S.Safe("packing", S.PackFlush) end return end
+  if ev == "PLAYER_LOGOUT" then if S.testMode then S.TestModeOff(true) end; S.Safe("saving your progress for the sync app", S.AppOutbox); S.RecordFlush(); if S.PackFlush then S.Safe("packing", S.PackFlush) end return end
   if S.RecordEvent then S.Safe("recording", S.RecordEvent, ev, a1, a2) end
   if (ev == "PLAYER_CONTROL_LOST" or ev == "PLAYER_CONTROL_GAINED") and SterlingQuestDB.path then
     C_Timer.After(1.5, function() local st = S.steps[S.CurrentIndex()]; if st and st.dmap then S.Safe("waypoint", S.SetWaypoint, st) end end)
   end
   if ev == "PLAYER_ENTERING_WORLD" then
-    if not S.appRead then S.appRead = true; C_Timer.After(2, function() S.Safe("sync app inbox", S.AppInbox) end) end
+    if not S.appRead then S.appRead = true; C_Timer.After(2, function() S.Safe("reading new progress from the sync app", S.AppInbox) end) end
     C_Timer.After(3, function()
       if SterlingQuestDB.following then S.FollowSession(S.FindSession(SterlingQuestDB.following), false) end
       -- your name is certain by now (it can be missing while the addon first loads): drop yourself if listed

@@ -88,7 +88,7 @@ The next step sits on a card at the top (pick up, do, turn in, fly, hearth, note
 
 ![Sync tab](docs/screenshots/sync.jpg)
 
-Your partners, up to 10. Each row shows their level, version (amber when outdated, red when it can't sync), whether they're online and when you last synced. **Star** up to 5 favourites to keep them on top, and the **eye** chooses whose status shows on tooltips. Right-click for a nickname, compare, sync on/off or remove. **+ Add** finds other Sterling users in your party, guild and friends list and invites them; they accept before anything syncs. **Edit** sets your own name and portrait.
+Your partners, up to 10. Each row shows their level, version (amber when outdated, red when it can't sync), whether they're online and their sync status (see [What the statuses mean](#what-the-statuses-mean)); hover a row for when you last synced. **Star** up to 5 favourites to keep them on top, and the **eye** chooses whose status shows on tooltips. Right-click for a nickname, compare, sync on/off or remove. **+ Add** finds other Sterling users in your party, guild and friends list and invites them; they accept before anything syncs. **Edit** sets your own name and portrait.
 
 ### Options and settings
 
@@ -106,10 +106,31 @@ Both are optional.
 The add-on syncs live whenever you and a friend are online together. The [Sterling Quest Sync app](https://github.com/SterlingAddons/SterlingQuestSync-App) covers the times you aren't:
 
 - **Offline sync**: when you log out, the app sends your latest progress to your partners. Their app picks it up before they log in, so Sterling shows your newest quests even if you never overlap.
-- **Auto-pairing**: partners who already sync in game can pair their apps without typing codes. Sterling passes the app's one-time pairing code to your partner in game.
+- **Auto-pairing**: your Sterling partners pair in the app on their own the next time you're both online in game. Pairing codes are only for people who aren't your partners in Sterling yet.
 - **Favourites**: the partners you star in game show at the top in the app too, and a change on either side carries over.
 
 Setup and downloads are on the [app's page](https://github.com/SterlingAddons/SterlingQuestSync-App).
+
+### Getting started with the app
+
+1. Install the app from its [page](https://github.com/SterlingAddons/SterlingQuestSync-App).
+2. **Exit WoW completely and start it again.** The app adds a small helper add-on (Sterling Quest Sync), and WoW only finds new add-ons when the game starts. `/reload` isn't enough.
+3. At character select, click **AddOns** and make sure **Sterling** and **Sterling Quest Sync** are both ticked.
+4. Log in. If the Sync tab says the app's helper add-on isn't loaded, go back to step 2.
+
+### What the statuses mean
+
+The Sync tab and the app use the same words for each partner:
+
+| Status | What it means |
+|---|---|
+| **Up to date** (green) | You have their latest progress and it's loaded. |
+| **Syncing...** | A live sync with them is running right now in game. |
+| **New copy, /reload to see it** (gold) | Newer progress arrived through the app but isn't loaded yet. You'll see this in the app; Sterling loads it at your next login or `/reload`. |
+| **Paired. Waiting for their next save** | You're paired in the app, but nothing has come from them yet. |
+| **Pairs when you're both next online** (gold) | They have the app; pairing finishes on its own the next time you're both in game. |
+| **Doesn't have the app yet** (red) | You still sync live in game when you're both online. Offline syncing starts once they install the app. |
+| **Not online with you yet** | Sterling hasn't heard from them about the app yet. |
 
 ## The server
 
