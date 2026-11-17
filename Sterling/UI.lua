@@ -142,7 +142,7 @@ local function Window(name, w, h, title)
     if rawget(f, "titleLine") then f.titleLine:SetParent(head); f.titleLine:ClearAllPoints(); f.titleLine:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 10, 0); f.titleLine:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", -10, 0) end
   end
   f.bar = bar
-  local logo = head:CreateTexture(nil, "OVERLAY"); logo:SetSize(16, 16); logo:SetPoint("LEFT", head, "LEFT", S.WowSkin() and 16 or 9, 0); logo:SetTexture("Interface\\AddOns\\Sterling\\Media\\glyph")
+  local logo = head:CreateTexture(nil, "OVERLAY"); logo:SetSize(16, 16); logo:SetPoint("LEFT", head, "LEFT", S.WowSkin() and 16 or 9, 0); logo:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
   f.title = head:CreateFontString(nil, "OVERLAY", "GameFontNormal"); f.title:SetPoint("LEFT", logo, "RIGHT", 7, 0); f.title:SetText(title)
   if S.WowSkin() then f.title:SetTextColor(1, .82, 0) else f.title:SetTextColor(.96, .97, 1) end
   f.right = head:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.right:SetPoint("RIGHT", head, "RIGHT", -34, 0); f.right:SetTextColor(.65, .7, .8)
@@ -3212,7 +3212,7 @@ local function BuildMinimap()
   mm:RegisterForClicks("LeftButtonUp", "RightButtonUp"); mm:RegisterForDrag("LeftButton")
   local overlay = mm:CreateTexture(nil, "OVERLAY"); overlay:SetSize(53, 53); overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder"); overlay:SetPoint("TOPLEFT")
   local bg = mm:CreateTexture(nil, "BACKGROUND"); bg:SetSize(20, 20); bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background"); bg:SetPoint("TOPLEFT", 7, -5)
-  local icon = mm:CreateTexture(nil, "ARTWORK"); icon:SetSize(18, 18); icon:SetPoint("TOPLEFT", 7, -6); icon:SetTexture("Interface\\AddOns\\Sterling\\Media\\glyph")
+  local icon = mm:CreateTexture(nil, "ARTWORK"); icon:SetSize(18, 18); icon:SetPoint("TOPLEFT", 7, -6); icon:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
   mm.dot = mm:CreateTexture(nil, "OVERLAY", nil, 7); mm.dot:SetSize(11, 11); mm.dot:SetPoint("TOPRIGHT", -3, -3); mm.dot:SetTexture("Interface\\COMMON\\Indicator-Red"); mm.dot:Hide()
   -- Follows the minimap's edge: round, square (square map addons set GetMinimapShape) and the corner/side shapes.
   -- true = that quarter is round. Quarters: 1 bottom-right, 2 bottom-left, 3 top-right, 4 top-left.
@@ -3258,7 +3258,7 @@ local function BuildMinimap()
     elseif btn == "RightButton" then S.MapToggle() else S.UI_Toggle() end
   end)
   mm:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:AddLine("Sterling Quest Sync")
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:AddLine("|TInterface\\AddOns\\Sterling\\Media\\icon:16:16:0:0|t Sterling Quest Sync")
     local rec = S.Recording()
     if rec then GameTooltip:AddLine("|cffff6060Recording|r " .. S.Duration(rec) .. ", " .. #rec.events .. " events") end
     local st = S.steps[S.CurrentIndex()]

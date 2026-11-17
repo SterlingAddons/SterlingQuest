@@ -203,7 +203,8 @@ local function buildWelcome()
   if inset then page:SetFrameLevel(inset:GetFrameLevel() + 2) end
   local W = WELCOME_W - 24
   local y = 0
-  local head = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); head:SetPoint("TOPLEFT", 4, y - 4); head:SetText("Sterling Quest Sync"); head:SetTextColor(1, .82, 0)
+  local mark = page:CreateTexture(nil, "OVERLAY"); mark:SetSize(22, 22); mark:SetPoint("TOPLEFT", 2, y - 1); mark:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
+  local head = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); head:SetPoint("LEFT", mark, "RIGHT", 6, 0); head:SetText("Sterling Quest Sync"); head:SetTextColor(1, .82, 0)
   y = y - 26
   local sub = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); sub:SetPoint("TOPLEFT", 4, y); sub:SetWidth(W - 8); sub:SetJustifyH("LEFT"); sub:SetTextColor(.78, .8, .86)
   sub:SetText("Quest with friends without losing track of who has done what.")

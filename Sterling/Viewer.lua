@@ -752,7 +752,7 @@ local function build()
   -- header
   local head = win:CreateTexture(nil, "ARTWORK"); head:SetPoint("TOPLEFT", 1, -1); head:SetPoint("TOPRIGHT", -1, -1); head:SetHeight(42); head:SetColorTexture(.16, .2, .33, 1)
   if S.WowSkin() then head:SetColorTexture(0, 0, 0, 0); if win.titleTile then win.titleTile:SetHeight(42) end end
-  local logo = win:CreateTexture(nil, "OVERLAY"); logo:SetSize(18, 18); logo:SetPoint("TOPLEFT", 10, -6); logo:SetTexture("Interface\\AddOns\\Sterling\\Media\\glyph")
+  local logo = win:CreateTexture(nil, "OVERLAY"); logo:SetSize(18, 18); logo:SetPoint("TOPLEFT", 10, -6); logo:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
   win.title = win:CreateFontString(nil, "OVERLAY", "GameFontNormal"); win.title:SetPoint("LEFT", logo, "RIGHT", 7, 0); win.title:SetTextColor(.96, .97, 1); win.title:SetText("Sterling Quest Sync Map")
   win.sub = win:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); win.sub:SetPoint("TOPLEFT", 10, -26); win.sub:SetTextColor(.75, .8, .9)
   local close = CreateFrame("Button", nil, win, "UIPanelCloseButton"); close:SetScale(.8); close:SetPoint("CENTER", head, "TOPRIGHT", -17, -19)   -- centred on the title row

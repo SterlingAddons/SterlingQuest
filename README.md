@@ -1,3 +1,5 @@
+<img src="docs/icon.png" alt="Sterling Quest Sync icon" width="96" align="right">
+
 # Sterling Quest Sync
 
 *Formerly Sterling Quest Tracker.*
@@ -23,7 +25,7 @@ Sterling is three pieces that work together. You only need the first one.
      │                                    │
  Sterling add-on                    Sterling add-on
      │  (at logout / login)               │
- Sync app  ──►  sync server  ──►  Friend's sync app
+ Companion app  ──►  sync server  ──►  Friend's Companion app
 ```
 
 Everything here is open source under the MIT license: the add-on's code is in [`Sterling/`](Sterling), its tests in [`qa/`](qa), and the developer notes in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
@@ -137,6 +139,11 @@ The Sync tab and the Companion app use the same words for each partner:
 ## The server
 
 The Companion app uses my server at `sync.sterlingaddons.com`. It's free for everyone, so nobody needs to run their own. If you'd rather host one yourself, the difficulty is **moderate**: a free Cloudflare account (with a domain on it) and some command-line steps. The [server's setup guide](https://github.com/SterlingAddons/SterlingQuestSync-Server/blob/main/SETUP.md) walks through it.
+
+## More from Sterling
+
+- [Sterling Loot Tracker](https://github.com/SterlingAddons/SterlingLoot): see who picked Need, Greed or Pass on every roll, with a roll history and gear sources.
+- [Sterling Hunter](https://github.com/SterlingAddons/SterlingHunter): buys your ammo at vendors, warns you before you run out, and reminds you when a travel aspect is still on in combat.
 
 ## Credits
 
