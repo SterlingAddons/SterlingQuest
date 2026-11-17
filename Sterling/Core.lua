@@ -1134,6 +1134,7 @@ end
 
 -- auto = started by Sterling itself (login, partner came online, joined a group): quieter in chat.
 function S.SyncWith(who, mode, auto)
+  if S.testMode then return end   -- screenshot mode: no syncs start, so nothing shows "Syncing..."
   local names = {}
   if who then names[1] = who
   else for _, p in ipairs(S.Partners()) do if p.on and S.PartnerOnline(p.name) then names[#names + 1] = p.name end end end
@@ -1195,6 +1196,7 @@ end
 S.offSince = {}       -- name -> GetTime() when they first looked offline (cleared when seen online)
 local autoDone = {}   -- name -> GetTime() of the last auto sync, so one trigger doesn't fire twice
 function S.AutoSync(name, why)
+  if S.testMode then return end   -- screenshot mode: no syncs start, so nothing shows "Syncing..."
   if not S.Opt("autoSync", true) or not SterlingQuestDB.sync then return end
   local p = S.FindPartner(name)
   if not (p and p.on) then return end
@@ -1209,6 +1211,7 @@ function S.AutoSyncAll(why)
 end
 -- The periodic check: ask each online partner for anything after the copy we hold, and send ours.
 local function autoCheck()
+  if S.testMode then return end   -- screenshot mode: no syncs start, so nothing shows "Syncing..."
   if not S.Opt("autoSync", true) or not SterlingQuestDB.sync then return end
   local n = 0
   for _, p in ipairs(S.Partners()) do
@@ -1309,6 +1312,7 @@ function S.SendProfile(tgt)
 end
 
 function S.RequestPartner(name)
+  if S.testMode then return end
   local function ask(tgt, who)
     local sn = who and S.snaps[who]
     if sn and sn.seq and sn.seq > 0 then send("SINCE\t" .. S.VERSION .. "\t" .. sn.seq, tgt) else send("REQ\t" .. S.VERSION, tgt) end

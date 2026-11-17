@@ -54,6 +54,8 @@ check("Catch-up: your log is the made-up one", st % 100 >= 1, st)
 R.L.eval('function(S) S.UI_Tab("sync"); S.UI_Update() end')(R.S)
 last = R.L.eval('function(S) return S.sync.lastEvent and S.sync.lastEvent.text end')(R.S)
 check("Sync: clean Last line", last == "Auto sync with Bran: 3 changes", last)
+check("no sync starts in test mode (auto, all, single)", R.L.eval('function(S) S.AutoSyncAll("login"); S.SyncWith(nil, "full"); S.SyncWith("Brannoc Ashvale", "quick"); local n = 0 for _ in pairs(S.pending) do n = n + 1 end return n == 0 and S.sync.lastEvent.text == "Auto sync with Bran: 3 changes" end')(R.S))
+check("every partner row stays off Syncing...", R.L.eval('function(S) for _, p in ipairs(S.Partners()) do local k = S.PartnerSyncState(p.name) if k == "syncing" then return false end end return true end')(R.S))
 mix = R.L.eval('''function(S) local seen = {}; local n = 0
   for q = 100, 400 do local l = S.QuestPartnerStatus(q); if #l ~= 4 then return -1 end
     for _, e in ipairs(l) do if not seen[e.state] then seen[e.state] = true; n = n + 1 end end end

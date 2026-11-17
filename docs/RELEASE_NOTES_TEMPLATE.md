@@ -17,4 +17,4 @@ Attach: `Sterling-<version>.zip` and `release.json`
 - **Manual:** unzip `Sterling-<version>.zip` into `_forever_\Interface\AddOns\`, then restart the game.
 - **Optional:** [Sterling Quest Sync Companion](https://github.com/SterlingAddons/SterlingQuestSync-App) syncs your quests with friends when you play at different times.
 
-Personal add-on, no support.
+Ideas and bug reports are always welcome: [open an issue](https://github.com/SterlingAddons/SterlingQuest/issues).
