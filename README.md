@@ -20,13 +20,7 @@ Sterling is three pieces that work together. You only need the first one.
 | **Sterling Quest Sync Companion** (optional) | An optional Windows app that syncs your quests with friends when you play at different times. | [SterlingQuestSync-App](https://github.com/SterlingAddons/SterlingQuestSync-App) |
 | **Sync server** | The mailbox the Companion app talks to. A public one is already running, so there's nothing to set up. | [SterlingQuestSync-Server](https://github.com/SterlingAddons/SterlingQuestSync-Server) |
 
-```
- Your game  ── live sync in game ──  Friend's game
-     │                                    │
- Sterling add-on                    Sterling add-on
-     │  (at logout / login)               │
- Companion app  ──►  sync server  ──►  Friend's Companion app
-```
+<img src="docs/how-it-works.svg" alt="When you're both online, Sterling syncs live in game. When you play at different times, your game saves your progress at logout, the Companion app sends it to the sync server, and your friend's Companion app brings it down for their game at login." width="100%">
 
 Everything here is open source under the MIT license: the add-on's code is in [`Sterling/`](Sterling), its tests in [`qa/`](qa), and the developer notes in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
