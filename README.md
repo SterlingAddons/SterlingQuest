@@ -127,7 +127,7 @@ The Sync tab and the Companion app use the same words for each partner:
 | **New copy, /reload to see it** (gold) | Newer progress arrived through the Companion app but isn't loaded yet. You'll see this in the Companion app; Sterling loads it at your next login or `/reload`. |
 | **Paired. Waiting for their next save** | You're paired in the Companion app, but nothing has come from them yet. |
 | **Pairs when you're both next online** (gold) | They have the Companion app; pairing finishes on its own the next time you're both in game. |
-| **Doesn't have the app yet** (red) | You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync Companion app. |
+| **No Companion app** (grey) | You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync Companion app. |
 | **Not online with you yet** | Sterling hasn't heard from them about the Companion app yet. |
 
 ## The server

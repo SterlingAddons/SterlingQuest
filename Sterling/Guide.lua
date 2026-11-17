@@ -320,7 +320,7 @@ local HELP = {
             "|cfff3c56bNew copy, /reload to see it|r (in the Companion app): newer progress arrived; Sterling loads it at your next login or /reload.",
             "Paired. Waiting for their next save: paired in the Companion app, nothing from them yet.",
             "|cfff3c56bPairs when you're both next online|r: they have the app; pairing finishes next time you're both in game.",
-            "|cffff7a73Doesn't have the app yet|r: you still sync live when you're both online. Offline syncing starts once they install the Companion app.",
+            "|cff9ea6b8No Companion app|r: you still sync live when you're both online. Offline syncing starts once they install the Companion app.",
             "Not online with you yet: Sterling hasn't heard from them about the app yet." } },
     { p = "\"Missing key, resync\" on a partner means the Companion app no longer has a key for you two (one of you reinstalled, or the pairing ended). Pair again in the app with a new code." },
   } },

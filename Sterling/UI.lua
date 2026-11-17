@@ -930,7 +930,7 @@ function S.UI_PartnerTooltip(owner, p, attention)
     if prob then txt, r, g, b = "missing key, resync", .95, .77, .42
     elseif paired then txt, r, g, b = "paired", .49, .89, .64
     elseif type(p.app) == "string" then txt, r, g, b = "they have it (v" .. p.app .. "), pairs when you're both next online", .95, .77, .42
-    elseif p.app == false then txt, r, g, b = "they don't have it yet", .95, .48, .45 end
+    elseif p.app == false then txt, r, g, b = "not installed", .62, .65, .72 end
     GameTooltip:AddDoubleLine("Companion app", txt, .56, .6, .7, r, g, b)
     if not prob and not paired and p.app == false then GameTooltip:AddLine(S.NOAPP_TIP, .7, .74, .84, true) end
     if prob then GameTooltip:AddLine("The Companion app no longer has a key for you two (one of you reinstalled, or the pairing ended). Pair again in the app with a new code, then sync.", .7, .74, .84, true) end

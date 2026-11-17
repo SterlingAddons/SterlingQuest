@@ -2045,7 +2045,7 @@ end
 --   current   "Up to date" (green)                   we have their latest progress and it's loaded
 --   paired    "Paired. Waiting for their next save"  paired in the app, no progress from them yet
 --   pairsoon  "Pairs when you're both next online"   both have the app; Sterling pairs them next time both are in game
---   noapp     "Doesn't have the app yet" (red)       they told us they don't have it (live sync still works)
+--   noapp     "No Companion app" (grey)              they told us they don't have it (live sync still works)
 --   unknown   "Not online with you yet"              we don't know about their app yet
 -- plus "Sync disabled", "Missing key, resync" and "Not synced yet" (no app on either side we know of).
 -- The app's "New copy, /reload to see it" can't happen in game: the app's new progress is only read at login
@@ -2070,7 +2070,7 @@ function S.PartnerSyncState(name)
     return "never", "Not synced yet", .55, .53, .48
   end
   if type(p.app) == "string" then return "pairsoon", "Pairs when you're both next online", .95, .77, .42 end
-  if p.app == false then return "noapp", S.Mark("bad") .. "Doesn't have the app yet", .95, .48, .45 end
+  if p.app == false then return "noapp", "No Companion app", .62, .65, .72 end
   if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
   return "unknown", "Not online with you yet", .84, .86, .91
 end
