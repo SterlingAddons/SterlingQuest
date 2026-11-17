@@ -134,11 +134,6 @@ The Sync tab and the Companion app use the same words for each partner:
 
 The Companion app uses my server at `sync.sterlingaddons.com`. It's free for everyone, so nobody needs to run their own. If you'd rather host one yourself, the difficulty is **moderate**: a free Cloudflare account (with a domain on it) and some command-line steps. The [server's setup guide](https://github.com/SterlingAddons/SterlingQuestSync-Server/blob/main/SETUP.md) walks through it.
 
-## More from Sterling
-
-- [Sterling Loot Tracker](https://github.com/SterlingAddons/SterlingLoot): see who picked Need, Greed or Pass on every roll, with a roll history and gear sources.
-- [Sterling Hunter](https://github.com/SterlingAddons/SterlingHunter): buys your ammo at vendors, warns you before you run out, and reminds you when a travel aspect is still on in combat.
-
 ## Credits
 
 - Questie, by the Questie team
