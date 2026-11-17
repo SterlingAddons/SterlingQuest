@@ -1,0 +1,76 @@
+# Publishes a release as github-actions instead of a personal account.
+# 1. Create the release as a draft (or it may already be published by a person).
+# 2. Actions > Publish release > Run workflow, enter the tag (for example v1.3).
+# The release is re-created by github-actions with the same tag, title, notes and files,
+# and the original is deleted.
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish, for example v1.3"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Collect the release
+        id: find
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name == $ENV.TAG and .author.login != "github-actions[bot]")][0] // empty' > rel.json
+          if [ ! -s rel.json ]; then
+            echo "::error::No release for $TAG made by a person. Nothing to publish."
+            exit 1
+          fi
+          echo "id=$(jq -r .id rel.json)" >> "$GITHUB_OUTPUT"
+          echo "draft=$(jq -r .draft rel.json)" >> "$GITHUB_OUTPUT"
+          echo "target=$(jq -r '.target_commitish // "main"' rel.json)" >> "$GITHUB_OUTPUT"
+          jq -r .name rel.json > title.txt
+          jq -r '.body // ""' rel.json > notes.md
+          mkdir assets
+          jq -c '.assets[]' rel.json | while read -r a; do
+            name=$(jq -r .name <<<"$a"); id=$(jq -r .id <<<"$a")
+            gh api -H "Accept: application/octet-stream" "repos/$REPO/releases/assets/$id" > "assets/$name"
+          done
+          ls -l assets
+          if [ -z "$(ls -A assets)" ]; then
+            echo "::error::The release has no files attached."
+            exit 1
+          fi
+
+      - name: Keep a copy of the files
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files-${{ inputs.tag }}
+          path: |
+            assets
+            title.txt
+            notes.md
+
+      - name: Publish as github-actions
+        run: |
+          set -euo pipefail
+          create() {
+            gh release create "$TAG" assets/* --repo "$REPO" \
+              --title "$(cat title.txt)" --notes-file notes.md \
+              --target "${{ steps.find.outputs.target }}" --latest
+          }
+          if [ "${{ steps.find.outputs.draft }}" = "true" ]; then
+            create
+            gh api -X DELETE "repos/$REPO/releases/${{ steps.find.outputs.id }}"
+          else
+            gh api -X DELETE "repos/$REPO/releases/${{ steps.find.outputs.id }}"
+            create
+          fi
+          gh release view "$TAG" --repo "$REPO" --json author,assets --jq '"Published by " + .author.login + ": " + ([.assets[].name] | join(", "))'
