@@ -57,7 +57,7 @@ R.lua('SterlingQuestAccountDB.appSeen = nil; SterlingQuestDB.appPairs = { ["Play
 check("pairings from the app but no add-on: note", miss(R) is True)
 R.L.eval('function(S) S.UI_Update() end')(R.S)
 w = R.L.eval('function(S) local w = S.UI_Page("sync").appWarn; return w:IsShown() and w:GetText() or "" end')(R.S)
-check("Sync tab shows the exact message", "The app's helper add-on (Sterling Quest Sync) isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select." in w, w)
+check("Sync tab shows the exact message", "The Companion add-on (Sterling Quest Sync Companion) isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select." in w, w)
 check("App line hidden while the note shows", R.L.eval('function(S) return S.UI_Page("sync").v.app:IsShown() end')(R.S) is False)
 # with the app: what we know about each partner's app
 L.L.eval('''function(S)
@@ -78,7 +78,7 @@ tip = L.L.eval('''function(S)
   local t = {}
   for _, l in ipairs(GameTooltip._lines or {}) do t[#t + 1] = tostring(l) end
   GameTooltip:Hide(); return table.concat(t, " | ") end''')(L.S)
-check("no-app hover explains live sync still works", "You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync app." in tip, tip)
+check("no-app hover explains live sync still works", "You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync Companion app." in tip, tip)
 # no player-facing jargon in the add-on's own text
 import re, glob, os
 bad = []
@@ -87,7 +87,14 @@ for f in glob.glob(os.path.join(sim.SRC, "*.lua")):
         code = line.split("--")[0]
         for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', code):
             txt = m.group(1)
-            if " " in txt.strip() and re.search(r"(?i)\b(inbox|outbox|packets?|guids?|proto|companion|wtf)\b", txt):
+            if " " in txt.strip() and re.search(r"(?i)\b(inbox|outbox|packets?|guids?|proto|wtf)\b", txt):
                 bad.append(os.path.basename(f) + ":" + str(i) + " " + txt[:60])
-check("no inbox/outbox/packet/GUID/proto/companion/WTF in visible text", not bad, bad)
+check("no inbox/outbox/packet/GUID/proto/WTF in visible text", not bad, bad)
+old = []
+for f in glob.glob(os.path.join(sim.SRC, "*.lua")):
+    for i, line in enumerate(open(f, encoding="utf-8"), 1):
+        code = line.split("--")[0]
+        for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', code):
+            if re.search(r"Sterling Sync|Sterling Quest Sync app|helper add-on|Sterling Quest Sync:", m.group(1)): old.append(os.path.basename(f) + ":" + str(i))
+check("no old app names in visible text", not old, old)
 print("ALL OK" if ok else "SOME FAILED")

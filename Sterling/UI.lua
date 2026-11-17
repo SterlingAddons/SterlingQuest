@@ -812,7 +812,7 @@ local function BuildSync(page)
       if not (r.p and S.ValidGUID(r.p.guid)) then GameTooltip:AddLine("Needs one live sync with them first.", .95, .77, .42, true)
       elseif fav then GameTooltip:AddLine("Shown on top. Click to remove.", .7, .74, .84, true)
       elseif #S.Favs() >= S.MAX_FAVS then GameTooltip:AddLine("You can favourite up to " .. S.MAX_FAVS .. " partners.", .95, .77, .42, true)
-      else GameTooltip:AddLine("Favourites show on top, here and in the Sterling Quest Sync app.", .7, .74, .84, true) end
+      else GameTooltip:AddLine("Favourites show on top, here and in the Companion app.", .7, .74, .84, true) end
       GameTooltip:Show()
     end)
     r.star:SetScript("OnLeave", function() GameTooltip:Hide(); r.paintStar() end)
@@ -931,9 +931,9 @@ function S.UI_PartnerTooltip(owner, p, attention)
     elseif paired then txt, r, g, b = "paired", .49, .89, .64
     elseif type(p.app) == "string" then txt, r, g, b = "they have it (v" .. p.app .. "), pairs when you're both next online", .95, .77, .42
     elseif p.app == false then txt, r, g, b = "they don't have it yet", .95, .48, .45 end
-    GameTooltip:AddDoubleLine("Sync app", txt, .56, .6, .7, r, g, b)
+    GameTooltip:AddDoubleLine("Companion app", txt, .56, .6, .7, r, g, b)
     if not prob and not paired and p.app == false then GameTooltip:AddLine(S.NOAPP_TIP, .7, .74, .84, true) end
-    if prob then GameTooltip:AddLine("The Sterling Quest Sync app no longer has a key for you two (one of you reinstalled, or the pairing ended). Pair again in the app with a new code, then sync.", .7, .74, .84, true) end
+    if prob then GameTooltip:AddLine("The Companion app no longer has a key for you two (one of you reinstalled, or the pairing ended). Pair again in the app with a new code, then sync.", .7, .74, .84, true) end
   end
   if sn and sn.level then GameTooltip:AddDoubleLine("Level", tostring(sn.level), .56, .6, .7, .9, .92, 1) end
   local ls = S.LastSynced(p.name)
@@ -1102,7 +1102,7 @@ local function UpdateSync(page)
     if missing then page.appWarn:SetText(S.Mark("warn") .. S.APP_ADDON_MISSING) end
     if present then
       local t
-      if not a.written or a.written == 0 then t = "|cff8a93a8Sterling Quest Sync: waiting for the app|r"
+      if not a.written or a.written == 0 then t = "|cff8a93a8Waiting for the Companion app|r"
       else
         local nprob = 0
         for _ in pairs(a.problems or {}) do nprob = nprob + 1 end
@@ -1476,8 +1476,8 @@ local function BuildOptions(outer)
   local r3 = Button(page, "Send my log now", 110); r3:SetPoint("TOPLEFT", 4, y); r3:SetScript("OnClick", function() S.SyncWith(nil, "send") end)
   y = y - 28
 
-  Section("Sterling Quest Sync app")
-  Note("Want syncing even when you're not online together? Try the optional Sterling Quest Sync app. Copy the link below.")
+  Section("Sterling Quest Sync Companion app")
+  Note("Want syncing even when you're not online together? Try the optional Sterling Quest Sync Companion app. Copy the link below.")
   y = y + 2
   do
     local eb = S.UI_LinkBox(page, S.APP_LINK); eb:SetPoint("TOPLEFT", 26, y); eb:SetPoint("RIGHT", page, "LEFT", OPT_W - 14, 0)

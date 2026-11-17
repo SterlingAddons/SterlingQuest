@@ -1955,13 +1955,13 @@ function S.AppInbox()
   end
   st.read = time()
   if #st.got > 0 then
-    S.SyncEvent("Sync app: got " .. table.concat(st.got, ", "))
-    say("sync", 1, "Sterling Quest Sync: got the latest from " .. table.concat(st.got, ", ") .. ".")
+    S.SyncEvent("Companion app: got " .. table.concat(st.got, ", "))
+    say("sync", 1, "Sterling Quest Sync Companion: got the latest from " .. table.concat(st.got, ", ") .. ".")
     if S.OnPartnerData then for _, n in ipairs(st.got) do S.Safe("partner data", S.OnPartnerData, n) end end
   end
   if not st.told then
     st.told = true
-    if st.appUpdate then msg("Sterling Quest Sync update available (v" .. st.latest .. "). Open the app to update.") end
+    if st.appUpdate then msg("Sterling Quest Sync Companion update available (v" .. st.latest .. "). Open the Companion app to update.") end
     if st.sterlingUpdate then msg("Sterling update available (v" .. st.sterlingLatest .. ").") end
   end
   pcall(S.AppSendCodes)
@@ -2022,7 +2022,7 @@ end
 -- WoW only finds new add-ons when the game starts, so after the app installs it a /reload isn't enough.
 -- Signs the app is there: the game knows the add-on (unticked or not loadable), it ran here before on
 -- this account, or there are pairings made in the app.
-S.APP_ADDON_MISSING = "The app's helper add-on (Sterling Quest Sync) isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select."
+S.APP_ADDON_MISSING = "The Companion add-on (Sterling Quest Sync Companion) isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select."
 function S.AppAddonMissing()
   if S.AppPresent() then return false end
   local info = (C_AddOns and C_AddOns.GetAddOnInfo) or rawget(_G, "GetAddOnInfo")
@@ -2070,7 +2070,7 @@ function S.PartnerSyncState(name)
   if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
   return "unknown", "Not online with you yet", .84, .86, .91
 end
-S.NOAPP_TIP = "You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync app."
+S.NOAPP_TIP = "You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync Companion app."
 
 S.found = {}
 -- Invites we sent, kept in saved data for a day: an accept that comes late (the other side was in a
@@ -2919,13 +2919,13 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
   end
   if ev == "CHAT_MSG_ADDON" then onAddonMessage(a1, a2, a3, a4) return end
   if ev == "CHAT_MSG_SYSTEM" then if S.SyncSystemMessage then S.SyncSystemMessage(a1) end return end
-  if ev == "PLAYER_LOGOUT" then if S.testMode then S.TestModeOff(true) end; S.Safe("saving your progress for the sync app", S.AppOutbox); S.RecordFlush(); if S.PackFlush then S.Safe("packing", S.PackFlush) end return end
+  if ev == "PLAYER_LOGOUT" then if S.testMode then S.TestModeOff(true) end; S.Safe("saving your progress for the Companion app", S.AppOutbox); S.RecordFlush(); if S.PackFlush then S.Safe("packing", S.PackFlush) end return end
   if S.RecordEvent then S.Safe("recording", S.RecordEvent, ev, a1, a2) end
   if (ev == "PLAYER_CONTROL_LOST" or ev == "PLAYER_CONTROL_GAINED") and SterlingQuestDB.path then
     C_Timer.After(1.5, function() local st = S.steps[S.CurrentIndex()]; if st and st.dmap then S.Safe("waypoint", S.SetWaypoint, st) end end)
   end
   if ev == "PLAYER_ENTERING_WORLD" then
-    if not S.appRead then S.appRead = true; C_Timer.After(2, function() S.Safe("reading new progress from the sync app", S.AppInbox) end) end
+    if not S.appRead then S.appRead = true; C_Timer.After(2, function() S.Safe("reading new progress from the Companion app", S.AppInbox) end) end
     C_Timer.After(3, function()
       if SterlingQuestDB.following then S.FollowSession(S.FindSession(SterlingQuestDB.following), false) end
       -- your name is certain by now (it can be missing while the addon first loads): drop yourself if listed

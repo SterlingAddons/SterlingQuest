@@ -69,7 +69,7 @@ has = lambda P, who, q: P.L.eval('function(S) local s = S.snaps["%s"]; return s 
 inbox(L, LG, [(100, RG, "partner", packet)], [])
 check("Brannoc gets Kaelith's solo quest from the app", has(L, "Kaelith Emberfall", 777))
 chat = " ".join(str(c) for c in L.chat())
-check("she's told about the app update (and not Sterling, she's on the latest... or is told)", "Sterling Quest Sync update available" in chat, chat[-300:])
+check("she's told about the app update (and not Sterling, she's on the latest... or is told)", "Sterling Quest Sync Companion update available" in chat, chat[-300:])
 # applying the same packet again is harmless; an older number is ignored
 L.lua('S_SNAPSEQ = nil')
 inbox(L, LG, [(100, RG, "partner", packet)], [])

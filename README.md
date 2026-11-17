@@ -13,8 +13,8 @@ Sterling is three pieces that work together. You only need the first one.
 | Piece | What it does | Where |
 |---|---|---|
 | **The add-on** | Lives in the game. Syncs quest logs with your friends while you're online together, shows who has done what, plans catch-up routes and records sessions to follow. | This repo |
-| **Sterling Quest Sync app** (optional) | A small Windows app that carries your quest progress to your friends while one of you is offline, so you're in step at the next login. | [SterlingQuestSync-App](https://github.com/SterlingAddons/SterlingQuestSync-App) |
-| **Sync server** | The mailbox the app talks to. A public one is already running, so there's nothing to set up. | [SterlingQuestSync-Server](https://github.com/SterlingAddons/SterlingQuestSync-Server) |
+| **Sterling Quest Sync Companion** (optional) | An optional Windows app that syncs your quests with friends when you play at different times. | [SterlingQuestSync-App](https://github.com/SterlingAddons/SterlingQuestSync-App) |
+| **Sync server** | The mailbox the Companion app talks to. A public one is already running, so there's nothing to set up. | [SterlingQuestSync-Server](https://github.com/SterlingAddons/SterlingQuestSync-Server) |
 
 ```
  Your game  ── live sync in game ──  Friend's game
@@ -32,7 +32,7 @@ Everything here is open source under the MIT license: the add-on's code is in [`
 - **Catch up**: pick a friend and a zone and get the quests they did there that you haven't, as a route to follow.
 - **Follow a path** step by step, with an arrow on the next stop, a map trail and playback.
 - **Record a session** and send it to a friend so they can follow your exact route.
-- **Offline sync**: never online at the same time? Use the app, or swap a string over Discord.
+- **Offline sync**: never online at the same time? Use the Companion app, or swap a string over Discord.
 
 ### Install
 
@@ -103,38 +103,38 @@ Both are optional.
 
 ## How the desktop app helps
 
-The add-on syncs live whenever you and a friend are online together. The [Sterling Quest Sync app](https://github.com/SterlingAddons/SterlingQuestSync-App) covers the times you aren't:
+The add-on syncs live whenever you and a friend are online together. [Sterling Quest Sync Companion](https://github.com/SterlingAddons/SterlingQuestSync-App) is an optional Windows app that syncs your quests with friends when you play at different times:
 
-- **Offline sync**: when you log out, the app sends your latest progress to your partners. Their app picks it up before they log in, so Sterling shows your newest quests even if you never overlap.
-- **Auto-pairing**: your Sterling partners pair in the app on their own the next time you're both online in game. Pairing codes are only for people who aren't your partners in Sterling yet.
-- **Favourites**: the partners you star in game show at the top in the app too, and a change on either side carries over.
+- **Offline sync**: when you log out, the Companion app sends your latest progress to your partners. Their app picks it up before they log in, so Sterling shows your newest quests even if you never overlap.
+- **Auto-pairing**: your Sterling partners pair in the Companion app on their own the next time you're both online in game. Pairing codes are only for people who aren't your partners in Sterling yet.
+- **Favourites**: the partners you star in game show at the top in the Companion app too, and a change on either side carries over.
 
 Setup and downloads are on the [app's page](https://github.com/SterlingAddons/SterlingQuestSync-App).
 
-### Getting started with the app
+### Getting started with the Companion app
 
-1. Install the app from its [page](https://github.com/SterlingAddons/SterlingQuestSync-App).
-2. **Exit WoW completely and start it again.** The app adds a small helper add-on (Sterling Quest Sync), and WoW only finds new add-ons when the game starts. `/reload` isn't enough.
-3. At character select, click **AddOns** and make sure **Sterling** and **Sterling Quest Sync** are both ticked.
-4. Log in. If the Sync tab says the app's helper add-on isn't loaded, go back to step 2.
+1. Install the Companion app from its [page](https://github.com/SterlingAddons/SterlingQuestSync-App).
+2. **Exit WoW completely and start it again.** The Companion app adds a small Companion add-on (it shows as **Sterling Quest Sync Companion** in your AddOns list), and WoW only finds new add-ons when the game starts. `/reload` isn't enough.
+3. At character select, click **AddOns** and make sure **Sterling Quest Tracker** and **Sterling Quest Sync Companion** are both ticked.
+4. Log in. If the Sync tab says the Companion add-on isn't loaded, go back to step 2.
 
 ### What the statuses mean
 
-The Sync tab and the app use the same words for each partner:
+The Sync tab and the Companion app use the same words for each partner:
 
 | Status | What it means |
 |---|---|
 | **Up to date** (green) | You have their latest progress and it's loaded. |
 | **Syncing...** | A live sync with them is running right now in game. |
-| **New copy, /reload to see it** (gold) | Newer progress arrived through the app but isn't loaded yet. You'll see this in the app; Sterling loads it at your next login or `/reload`. |
-| **Paired. Waiting for their next save** | You're paired in the app, but nothing has come from them yet. |
-| **Pairs when you're both next online** (gold) | They have the app; pairing finishes on its own the next time you're both in game. |
-| **Doesn't have the app yet** (red) | You still sync live in game when you're both online. Offline syncing starts once they install the app. |
-| **Not online with you yet** | Sterling hasn't heard from them about the app yet. |
+| **New copy, /reload to see it** (gold) | Newer progress arrived through the Companion app but isn't loaded yet. You'll see this in the Companion app; Sterling loads it at your next login or `/reload`. |
+| **Paired. Waiting for their next save** | You're paired in the Companion app, but nothing has come from them yet. |
+| **Pairs when you're both next online** (gold) | They have the Companion app; pairing finishes on its own the next time you're both in game. |
+| **Doesn't have the app yet** (red) | You still sync live in game when you're both online. Offline syncing starts once they install the Sterling Quest Sync Companion app. |
+| **Not online with you yet** | Sterling hasn't heard from them about the Companion app yet. |
 
 ## The server
 
-The app uses my server at `sync.sterlingaddons.com`. It's free for everyone, so nobody needs to run their own. If you'd rather host one yourself, the difficulty is **moderate**: a free Cloudflare account (with a domain on it) and some command-line steps. The [server's setup guide](https://github.com/SterlingAddons/SterlingQuestSync-Server/blob/main/SETUP.md) walks through it.
+The Companion app uses my server at `sync.sterlingaddons.com`. It's free for everyone, so nobody needs to run their own. If you'd rather host one yourself, the difficulty is **moderate**: a free Cloudflare account (with a domain on it) and some command-line steps. The [server's setup guide](https://github.com/SterlingAddons/SterlingQuestSync-Server/blob/main/SETUP.md) walks through it.
 
 ## Credits
 
