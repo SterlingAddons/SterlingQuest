@@ -2,8 +2,8 @@
 ## Title: Sterling Quest Sync
 ## Notes: Sync quest logs with friends, catch up on what they have done, and follow a recorded path with an arrow, a map trail and playback. Works with Questie and TomTom.
 ## Author: Sterling
-## Version: 0.3.13
-## X-Build: 313
+## Version: 0.3.14
+## X-Build: 314
 ## X-Credits: Works with Questie (the Questie team) and TomTom (Cladhaire). Bundles ChatThrottleLib (Mikk), LibDeflate (Haoqian He) and LibStub.
 ## IconTexture: Interface\AddOns\Sterling\Media\icon
 ## SavedVariables: SterlingQuestAccountDB
