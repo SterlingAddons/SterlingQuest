@@ -3210,9 +3210,9 @@ local function BuildMinimap()
   mm = CreateFrame("Button", "SterlingQuestMinimapButton", Minimap)
   mm:SetSize(31, 31); mm:SetFrameStrata("MEDIUM"); mm:SetFrameLevel(8)
   mm:RegisterForClicks("LeftButtonUp", "RightButtonUp"); mm:RegisterForDrag("LeftButton")
-  local overlay = mm:CreateTexture(nil, "OVERLAY"); overlay:SetSize(53, 53); overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder"); overlay:SetPoint("TOPLEFT")
-  local bg = mm:CreateTexture(nil, "BACKGROUND"); bg:SetSize(20, 20); bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background"); bg:SetPoint("TOPLEFT", 7, -5)
-  local icon = mm:CreateTexture(nil, "ARTWORK"); icon:SetSize(18, 18); icon:SetPoint("TOPLEFT", 7, -6); icon:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
+  -- The medallion is the whole button (its brass rim is the edge), like Sterling Loot Tracker's.
+  local icon = mm:CreateTexture(nil, "ARTWORK"); icon:SetAllPoints(); icon:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
+  local hl = mm:CreateTexture(nil, "HIGHLIGHT"); hl:SetAllPoints(); hl:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon"); hl:SetBlendMode("ADD"); hl:SetAlpha(0.35)
   mm.dot = mm:CreateTexture(nil, "OVERLAY", nil, 7); mm.dot:SetSize(11, 11); mm.dot:SetPoint("TOPRIGHT", -3, -3); mm.dot:SetTexture("Interface\\COMMON\\Indicator-Red"); mm.dot:Hide()
   -- Follows the minimap's edge: round, square (square map addons set GetMinimapShape) and the corner/side shapes.
   -- true = that quarter is round. Quarters: 1 bottom-right, 2 bottom-left, 3 top-right, 4 top-left.
