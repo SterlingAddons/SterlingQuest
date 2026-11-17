@@ -1,6 +1,6 @@
 # Developer notes
 
-Notes kept while building Sterling Quest Tracker for WoW Forever: what the client allows, the Lua and UI traps that bit, how the tests work, and a version-by-version record of how each part of the add-on works. Names of players in examples are made up.
+Notes kept while building Sterling Quest Sync (formerly Sterling Quest Tracker) for WoW Forever: what the client allows, the Lua and UI traps that bit, how the tests work, and a version-by-version record of how each part of the add-on works. Names of players in examples are made up.
 
 - Code: `Sterling/` (load order is in `Sterling.toc`).
 - Tests: `qa/`. Run `bash qa/all.sh` (Python 3 with `lupa` and `Pillow`). `qa/fixtures/sterling-6.29/` is an old build used to test that old and new copies still sync.
@@ -13,7 +13,7 @@ Notes kept while building Sterling Quest Tracker for WoW Forever: what the clien
 - Some values are "secret" in combat (health, threat, auras, enemy spells). Wrap aura reads in pcall and check `issecretvalue` when it exists.
 - So anything built on "who hit what" (trap break attribution, resist detection from the log) is off the table. Decided: drop combat log features for now.
 - Old global APIs missing here: `GetMerchantItemInfo` (use `C_MerchantFrame.GetItemInfo`), `GetSpellBookItemName/Info` (use `C_SpellBook`), `GetItemInfoInstant` (use `C_Item.GetItemInfoInstant`), `GetFactionInfo` (use `C_Reputation`), `GetPetHappiness`, `GetPetFoodTypes`, `GetPetLoyalty`, `EquipItemByName`, `ContainerIDToInventoryID` (use `C_Container`).
-- **`EasyMenu` and `UIDropDownMenuTemplate` don't exist.** Right-click menus built on them silently do nothing. Sterling Quest Tracker has its own menu (`S.ShowMenu(items, anchor)`, submenus via `menuList`, closes on outside click with `GLOBAL_MOUSE_DOWN`). Reuse it.
+- **`EasyMenu` and `UIDropDownMenuTemplate` don't exist.** Right-click menus built on them silently do nothing. Sterling has its own menu (`S.ShowMenu(items, anchor)`, submenus via `menuList`, closes on outside click with `GLOBAL_MOUSE_DOWN`). Reuse it.
 - `UNIT_HAPPINESS` fires constantly for every unit (player, pet, targettarget), so it's useless as a pet happiness signal.
 - `UnitName("player")` returns only the first word for names with spaces ("Kaelith" for "Kaelith Emberfall"). Other players' addon messages carry the full name, and the group echoes your own addon messages back to you.
 
@@ -56,11 +56,12 @@ Notes kept while building Sterling Quest Tracker for WoW Forever: what the clien
 - **Questie** saves a per-character `journey` in `SavedVariables\Questie.lua` (QuestieConfig.char["Kaelith Emberfall"].journey): every quest Accept / Complete / Abandon and level-up, with timestamps. Quest names are not in it; Sterling's own name cache (`SterlingQuestDB.names`) has them.
 - Questie's quest/NPC database is a compiled binary blob in the same file (questBin/npcBin), not easy to read. Read it at runtime through `QuestieLoader:ImportModule("QuestieDB")` instead.
 
-## Sterling Quest Tracker: how it works, version by version
+## Sterling Quest Sync: how it works, version by version
 
 Records a play session (positions, quests, flights, boats, hearths, dungeons, levels, deaths, notes), exports it as a string, and lets a friend follow it with a TomTom arrow, a Path checklist, its own map window with playback and a timeline, plus quest-log sync and compare between any number of partners, a Catch-up planner, and partner quest status on tooltips and in the quest log.
 
 - Folder `Sterling`. Load order: Libs (LibStub, ChatThrottleLib, LibDeflate), Core.lua (data, sync, offline sync, path engine, slash), Theme.lua (skin, fonts, tabs), Record.lua (recorder, sessions, encode/decode), Map.lua (world map overlay, minimap trail), Reveal.lua (unexplored map data), Viewer.lua (map window + timeline + session compare), UI.lua (windows, tabs, Options, menus), Status.lua (partner quest status on tooltips and quest log), Catchup.lua (Catch-up planner), Guide.lua (welcome, tour, tips, Help), Bindings.xml, Media.
+- **Names (0.3.13):** everything visible says "Sterling Quest Sync" (window, AddOns list, minimap tooltip, keybind header, help, chat prefix). The desktop app is "Sterling Quest Sync Companion" and its small add-on "the Companion add-on". Code names below are unchanged.
 - **Names (5.30):** everything visible says "Sterling Quest Tracker". Code names are `SterlingQuest`: saved data `SterlingQuestDB` (migrated from `SterlingDB`), frames `SterlingQuest*`, keybinds `STERLINGQUEST_*`, slash list `STERLINGQUEST`, addon message prefix `SterlingQuest`. Slash commands stay `/stq`, `/sterling`, `/st`.
 - Sync protocol number lives in `S.VERSION` (now 6). Bump it on any change to the sync message format so mismatched copies refuse each other. The addon version (`S.ADDON_VER`, from the toc) travels in `AVER`.
 - Sessions: right-click for Follow, Map, Export, Send, Rename, Merge, Compare, Delete. Delete asks first and goes to a trash of the last 5; a Restore button on the Sessions page brings the latest back.

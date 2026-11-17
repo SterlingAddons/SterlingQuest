@@ -1,4 +1,4 @@
--- Sterling Quest Tracker: partner quest status
+-- Sterling Quest Sync: partner quest status
 -- 1) Tooltips: under each quest title Questie adds to a mob/object/item tooltip (and its map pins),
 --    one line per status: "Done: Brannoc, Tovak" / "In log: Grukk 3/8". Nothing if no partner started it.
 -- 2) Quest log and the NPC quest window: under the quest title, one line per status, including "Not started".

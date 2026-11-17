@@ -1,4 +1,4 @@
--- Sterling Quest Tracker: the look. "wow" (default) builds windows from Blizzard's own frame pieces
+-- Sterling Quest Sync: the look. "wow" (default) builds windows from Blizzard's own frame pieces
 -- (metal nine-slice border, rock background, title tile, inset panels, bottom tabs) so the addon
 -- looks like it shipped with the game. "navy" is Sterling's flat dark-blue look from before 5.46.
 -- Every Blizzard piece is tried in a pcall with a flat fallback, since this client drops old textures.

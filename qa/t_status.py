@@ -95,6 +95,6 @@ for f in glob.glob(os.path.join(sim.SRC, "*.lua")):
     for i, line in enumerate(open(f, encoding="utf-8"), 1):
         code = line.split("--")[0]
         for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', code):
-            if re.search(r"Sterling Sync|Sterling Quest Sync app|helper add-on|Sterling Quest Sync:", m.group(1)): old.append(os.path.basename(f) + ":" + str(i))
+            if re.search(r"Sterling Sync|Sterling Quest Sync app|helper add-on|Quest Tracker", m.group(1)): old.append(os.path.basename(f) + ":" + str(i))
 check("no old app names in visible text", not old, old)
 print("ALL OK" if ok else "SOME FAILED")

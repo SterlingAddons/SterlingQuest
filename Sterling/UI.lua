@@ -794,7 +794,7 @@ local function BuildSync(page)
     r.faceBack = r:CreateTexture(nil, "BORDER"); r.faceBack:SetSize(22, 22); r.faceBack:SetPoint("LEFT", 30, 0); r.faceBack:SetColorTexture(.05, .05, .08, 1)
     r.face = r:CreateTexture(nil, "ARTWORK"); r.face:SetPoint("TOPLEFT", r.faceBack, 1, -1); r.face:SetPoint("BOTTOMRIGHT", r.faceBack, -1, 1)
     r.faceEdge = r:CreateTexture(nil, "BACKGROUND", nil, 2); r.faceEdge:SetPoint("TOPLEFT", r.faceBack, -1, 1); r.faceEdge:SetPoint("BOTTOMRIGHT", r.faceBack, 1, -1)
-    -- star: favourite (up to 5; favourites sit on top here and in the Sterling Quest Sync app)
+    -- star: favourite (up to 5; favourites sit on top here and in the Companion app)
     r.star = CreateFrame("Button", nil, r); r.star:SetSize(13, 13); r.star:SetFrameLevel(r:GetFrameLevel() + 3)
     r.star:SetPoint("CENTER", r.faceBack, "TOPLEFT", 1, -1)   -- a small badge on the face's corner
     r.star.tex = r.star:CreateTexture(nil, "ARTWORK"); r.star.tex:SetAllPoints()
@@ -872,7 +872,7 @@ local function BuildSync(page)
   page.v.resent = cell("Resent", 1, 2); page.v.msgs = cell("Messages", 2, 2)
   local ll = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); ll:SetPoint("TOPLEFT", 4, -52); ll:SetText("Last"); ll:SetTextColor(S.LabelColor())
   page.v.last = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.last:SetPoint("TOPLEFT", 66, -52); page.v.last:SetPoint("RIGHT", -4, 0); page.v.last:SetJustifyH("LEFT"); page.v.last:SetWordWrap(false)
-  -- the Sterling Quest Sync app (only when its companion add-on is installed)
+  -- the Companion app (only when its companion add-on is installed)
   page.appL = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appL:SetPoint("TOPLEFT", 4, -67); page.appL:SetText("App"); page.appL:SetTextColor(S.LabelColor())
   page.v.app = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.app:SetPoint("TOPLEFT", 66, -67); page.v.app:SetPoint("RIGHT", -4, 0); page.v.app:SetJustifyH("LEFT"); page.v.app:SetWordWrap(false)
   -- the app is installed but its helper add-on isn't running (a new add-on needs a full game restart)
@@ -1046,7 +1046,7 @@ local function UpdateSync(page)
     if on then r.stat:SetText(S.Mark("good") .. "Online"); r.stat:SetTextColor(.44, .84, .54)
     elseif how then r.stat:SetText("Offline"); r.stat:SetTextColor(.55, .53, .48)
     else r.stat:SetText(S.Mark("warn") .. "Can't tell"); r.stat:SetTextColor(.91, .72, .35) end
-    -- sync state, worded like the Sterling Quest Sync app (when they last synced is on the hover card)
+    -- sync state, worded like the Companion app (when they last synced is on the hover card)
     local _, stxt, sr, sg, sb2 = S.PartnerSyncState(p.name)
     r.last:SetText(stxt or ""); r.last:SetTextColor(sr or .55, sg or .53, sb2 or .48)
     r.sel:SetShown(page.selected == p.name); r.sel:SetAlpha(1)
@@ -1295,7 +1295,7 @@ local function BuildOptions(outer)
   asl:SetScript("OnValueChanged", function(_, v) v = math.floor(v * 20 + .5) / 20; SterlingQuestDB.opts.alpha = v; albl:SetText(("Window opacity  %d%%"):format(v * 100)); S.UI_ApplyOptions() end)
   y = y - 50
   local p = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); p:SetPoint("TOPLEFT", 4, y); p:SetWidth(OPT_W - 16); p:SetJustifyH("LEFT"); p:SetTextColor(.6, .64, .74)
-  p:SetText("Keybinds: Escape > Key Bindings > Sterling Quest Tracker (record/stop, mark done, map, window).\nEverything here also works as /st commands: /st for the list.")
+  p:SetText("Keybinds: Escape > Key Bindings > Sterling Quest Sync (record/stop, mark done, map, window).\nEverything here also works as /st commands: /st for the list.")
   y = y - 40
   ui.partnerText = p
 
@@ -1353,7 +1353,7 @@ local function BuildOptions(outer)
     local pv = CreateFrame("Frame", nil, page, BD); pv:SetPoint("TOPLEFT", 4, y); pv:SetSize(OPT_W - 14, 74)
     if pv.SetBackdrop then pv:SetBackdrop(S.BG_FLAT) end
     local pvBar = pv:CreateTexture(nil, "ARTWORK"); pvBar:SetPoint("TOPLEFT", 1, -1); pvBar:SetPoint("TOPRIGHT", -1, -1); pvBar:SetHeight(20)
-    local pvTitle = pv:CreateFontString(nil, "OVERLAY", "GameFontNormal"); pvTitle:SetPoint("LEFT", pvBar, "LEFT", 8, 0); pvTitle:SetText("Sterling Quest Tracker"); pvTitle:SetTextColor(.96, .97, 1)
+    local pvTitle = pv:CreateFontString(nil, "OVERLAY", "GameFontNormal"); pvTitle:SetPoint("LEFT", pvBar, "LEFT", 8, 0); pvTitle:SetText("Sterling Quest Sync"); pvTitle:SetTextColor(.96, .97, 1)
     local pvTab = pv:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pvTab:SetPoint("TOPLEFT", 10, -26); pvTab:SetText("Catch-up")
     local pvTabLine = pv:CreateTexture(nil, "ARTWORK"); pvTabLine:SetPoint("TOPLEFT", pvTab, "BOTTOMLEFT", -2, -2); pvTabLine:SetPoint("TOPRIGHT", pvTab, "BOTTOMRIGHT", 2, -2); pvTabLine:SetHeight(2)
     local pvTab2 = pv:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pvTab2:SetPoint("LEFT", pvTab, "RIGHT", 22, 0); pvTab2:SetText("Path"); pvTab2:SetTextColor(.56, .6, .7)
@@ -2222,7 +2222,7 @@ end
 
 local function BuildMain()
   local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("Sterling", "Version")) or (GetAddOnMetadata and GetAddOnMetadata("Sterling", "Version")) or "?"
-  main = Window("SterlingQuestFrame", 370, 330, "Sterling Quest Tracker")
+  main = Window("SterlingQuestFrame", 370, 330, "Sterling Quest Sync")
   -- the version sits beside the title in the small font, so the title row has room for Options and Help
   main.ver = main.head:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); main.ver:SetText("v" .. ver); main.ver:SetTextColor(.53, .57, .65)
   -- tabs: Blizzard's bottom tabs in the WoW skin (hanging under the window), our own strip in navy
@@ -2605,7 +2605,7 @@ end
 local optWin
 function S.UI_Options()
   if not optWin then
-    optWin = Window("SterlingQuestOptions", 480, 560, "Sterling Quest Tracker options")
+    optWin = Window("SterlingQuestOptions", 480, 560, "Sterling Quest Sync options")
     local p = CreateFrame("Frame", nil, optWin); p:SetPoint("TOPLEFT", 12, -38); p:SetPoint("BOTTOMRIGHT", -10, 12)
     local inset = S.Inset(optWin); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6); p:SetFrameLevel(inset:GetFrameLevel() + 2) end
     pages.options = p
@@ -3258,7 +3258,7 @@ local function BuildMinimap()
     elseif btn == "RightButton" then S.MapToggle() else S.UI_Toggle() end
   end)
   mm:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:AddLine("Sterling Quest Tracker")
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:AddLine("Sterling Quest Sync")
     local rec = S.Recording()
     if rec then GameTooltip:AddLine("|cffff6060Recording|r " .. S.Duration(rec) .. ", " .. #rec.events .. " events") end
     local st = S.steps[S.CurrentIndex()]
@@ -3280,7 +3280,7 @@ function S.UI_MinimapState()
 end
 
 -- Key bindings (Bindings.xml)
-BINDING_HEADER_STERLINGQUEST = "Sterling Quest Tracker"
+BINDING_HEADER_STERLINGQUEST = "Sterling Quest Sync"
 BINDING_NAME_STERLINGQUEST_RECORD = "Record / Stop"
 BINDING_NAME_STERLINGQUEST_DONE = "Mark current step done"
 BINDING_NAME_STERLINGQUEST_MAP = "Toggle map playback"

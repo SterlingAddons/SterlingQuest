@@ -1,4 +1,6 @@
-# Sterling Quest Tracker
+# Sterling Quest Sync
+
+*Formerly Sterling Quest Tracker.*
 
 Quest with friends on WoW Forever without losing track of who has done what.
 
@@ -6,7 +8,7 @@ Sterling began as a little project for me and a few close friends, so we could k
 
 > Built by Sterling with the help of Claude Opus, an AI model by Anthropic. The ideas, testing and decisions are mine; much of the code was written with Claude. Everything is tested in game with friends.
 
-## This is Sterling Quest Tracker
+## This is Sterling Quest Sync
 
 Sterling is three pieces that work together. You only need the first one.
 
@@ -115,7 +117,7 @@ Setup and downloads are on the [app's page](https://github.com/SterlingAddons/St
 
 1. Install the Companion app from its [page](https://github.com/SterlingAddons/SterlingQuestSync-App).
 2. **Exit WoW completely and start it again.** The Companion app adds a small Companion add-on (it shows as **Sterling Quest Sync Companion** in your AddOns list), and WoW only finds new add-ons when the game starts. `/reload` isn't enough.
-3. At character select, click **AddOns** and make sure **Sterling Quest Tracker** and **Sterling Quest Sync Companion** are both ticked.
+3. At character select, click **AddOns** and make sure **Sterling Quest Sync** and **Sterling Quest Sync Companion** are both ticked.
 4. Log in. If the Sync tab says the Companion add-on isn't loaded, go back to step 2.
 
 ### What the statuses mean

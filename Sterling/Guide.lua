@@ -1,4 +1,4 @@
--- Sterling Quest Tracker: first-run welcome, the three-step tour, one-time tab tips and the Help window.
+-- Sterling Quest Sync: first-run welcome, the three-step tour, one-time tab tips and the Help window.
 -- Everything here is optional reading: nothing in the addon depends on it, and every piece can be
 -- reopened from Help (the "?" in the title bar) or Options > General.
 local _, S = ...
@@ -203,7 +203,7 @@ local function buildWelcome()
   if inset then page:SetFrameLevel(inset:GetFrameLevel() + 2) end
   local W = WELCOME_W - 24
   local y = 0
-  local head = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); head:SetPoint("TOPLEFT", 4, y - 4); head:SetText("Sterling Quest Tracker"); head:SetTextColor(1, .82, 0)
+  local head = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); head:SetPoint("TOPLEFT", 4, y - 4); head:SetText("Sterling Quest Sync"); head:SetTextColor(1, .82, 0)
   y = y - 26
   local sub = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); sub:SetPoint("TOPLEFT", 4, y); sub:SetWidth(W - 8); sub:SetJustifyH("LEFT"); sub:SetTextColor(.78, .8, .86)
   sub:SetText("Quest with friends without losing track of who has done what.")
@@ -272,7 +272,7 @@ end
 -- { key, title, { blocks } }   block = { h = "heading" } | { p = "paragraph" } | { l = { "bullet", ... } }
 local HELP = {
   { "start", "Getting started", {
-    { p = "Sterling Quest Tracker keeps you and your friends in step while you level. It shares quest logs, shows who has done what, works out what you still need in a zone, and walks you along a path." },
+    { p = "Sterling Quest Sync keeps you and your friends in step while you level. It shares quest logs, shows who has done what, works out what you still need in a zone, and walks you along a path." },
     { h = "Three things to try" },
     { l = { "Sync tab: + Add a friend. They accept, and your logs sync whenever you're both online.",
             "Catch-up tab: pick that friend and a zone, then Start path.",
@@ -280,7 +280,7 @@ local HELP = {
     { h = "Getting around" },
     { l = { "The minimap button opens this window. Right-click it for the map, Shift-click to record or stop.",
             "Options is in the title bar. Everything is also a slash command: type /st for the list.",
-            "Keybinds: Escape > Key Bindings > Sterling Quest Tracker.",
+            "Keybinds: Escape > Key Bindings > Sterling Quest Sync.",
             "Windows can be dragged anywhere and remember where you left them." } },
   } },
   { "sync", "Partners and sync", {
@@ -387,7 +387,7 @@ local HELP = {
     { p = "Options > General > Reset all settings puts every option back. Your partners, quest data and sessions stay. If you're asked for details, Sync state and Sync traffic below print what sync is doing into chat." },
   } },
   { "credits", "Credits", {
-    { p = "Sterling Quest Tracker is made by Sterling for WoW Forever." },
+    { p = "Sterling Quest Sync is made by Sterling for WoW Forever." },
     { h = "Works with" },
     { l = { "Questie, by the Questie team: the quest database behind Catch-up, quest names and tooltip status.",
             "TomTom, by Cladhaire: the waypoint arrow." } },
@@ -446,7 +446,7 @@ local function helpShow(key)
   f.state:SetShown(trouble); f.traffic:SetShown(trouble)
 end
 local function buildHelp()
-  help = Window("SterlingQuestHelp", HELP_W, HELP_H, "Sterling Quest Tracker help")
+  help = Window("SterlingQuestHelp", HELP_W, HELP_H, "Sterling Quest Sync help")
   local f = help
   local inset = S.Inset(f); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6) end
   local page = CreateFrame("Frame", nil, f); page:SetPoint("TOPLEFT", 12, -38); page:SetPoint("BOTTOMRIGHT", -12, 12)

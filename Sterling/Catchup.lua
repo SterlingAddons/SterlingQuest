@@ -1,4 +1,4 @@
--- Sterling Quest Tracker: catch-up plans and quest sharing hints, built on Questie's database.
+-- Sterling Quest Sync: catch-up plans and quest sharing hints, built on Questie's database.
 --   S.CatchupZones(partner)        zones where they finished (or hold) quests you haven't done
 --   S.CatchupPlan(partner, zone)   those quests grouped: ready / in your log / locked behind a quest / level / not for you
 --   S.CatchupStart(partner, zone)  turns the plan into a Path (pick-ups, then turn-ins)

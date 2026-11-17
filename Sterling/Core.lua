@@ -4,7 +4,7 @@ Sterling = S
 S.PREFIX = "SterlingQuest"
 S.VERSION = 6          -- sync protocol; both sides must match or nothing is exchanged
 
-local function msg(text) DEFAULT_CHAT_FRAME:AddMessage("|cff8ab8ffSterling Quest Tracker:|r " .. tostring(text)) end
+local function msg(text) DEFAULT_CHAT_FRAME:AddMessage("|cff8ab8ffSterling Quest Sync:|r " .. tostring(text)) end
 S.msg = msg
 -- Chat detail per area (Options > Chat detail): 0 quiet (failures only), 1 simple, 2 advanced, 3 full.
 -- Areas: sync, tooltip. Old debug_<area> toggles count as full.
@@ -27,7 +27,7 @@ S.Say = say
 local function dbg(area, text) say(area, 3, text) end
 S.Debug = dbg
 -- One readable line for a sync message: chunk parts as "SNAP 3/20 (#id)", others by their first words.
--- Pairing codes for the Sterling Quest Sync app are never shown anywhere, debugging included.
+-- Pairing codes for the Companion app are never shown anywhere, debugging included.
 local function hideCode(text) if text:find("^PCODE\t") or text:find("^PCOK\t") then return text:match("^%u+") .. " (code hidden)" end return text end
 S.HideCode = hideCode
 local function describe(text)
@@ -351,7 +351,7 @@ function S.ParseSnapshot(str)
   local sep = str:sub(1, 5) == "STR3^" and "^" or "|"
   local f = {}
   for piece in (str .. sep):gmatch("(.-)%" .. sep) do f[#f + 1] = piece end
-  if not (f[1] == "STR1" or f[1] == "STR2" or f[1] == "STR3") then return nil, "not a Sterling Quest Tracker string" end
+  if not (f[1] == "STR1" or f[1] == "STR2" or f[1] == "STR3") then return nil, "not a Sterling Quest Sync string" end
   local snap = { name = f[2], realm = f[3], level = tonumber(f[4]) or 0, log = {}, completed = {}, at = tonumber(f[7]) or 0, seq = tonumber(f[9]) or 0, label = f[10] }
   for item in (f[5] or ""):gmatch("[^;]+") do
     local qid, st, title, objs = item:match("^(%d+)%.(%a)%.([^%.]*)%.?(.*)$")
@@ -598,7 +598,7 @@ end
 function S.RemovePartner(name)
   local p, i = S.FindPartner(name)
   if p and p.guid and p.guid ~= S.MyGUID() then
-    -- remembered (with the game server's time) so the Sterling Quest Sync app can end that pairing too
+    -- remembered (with the game server's time) so the Companion app can end that pairing too
     SterlingQuestDB.removedG = SterlingQuestDB.removedG or {}
     SterlingQuestDB.removedG[p.guid] = S.ServerTime()
   end
@@ -1277,8 +1277,8 @@ S.warned = {}
 function S.VersionMismatch(name, ver)
   if S.warned[name] == ver then return end
   S.warned[name] = ver
-  if ver < S.VERSION then msg("|cffff9b92Can't sync with " .. name .. ": update needed.|r Their Sterling Quest Tracker is too old to talk to yours. They need to update (WowUp, or the zip you have).")
-  else msg("|cffff9b92Can't sync with " .. name .. ": update needed.|r Their Sterling Quest Tracker is newer than yours. Update yours (WowUp, or their zip).") end
+  if ver < S.VERSION then msg("|cffff9b92Can't sync with " .. name .. ": update needed.|r Their Sterling Quest Sync is too old to talk to yours. They need to update (WowUp, or the zip you have).")
+  else msg("|cffff9b92Can't sync with " .. name .. ": update needed.|r Their Sterling Quest Sync is newer than yours. Update yours (WowUp, or their zip).") end
 end
 -- Partners known to be on a different version: { {name=, ver=}, ... }
 function S.Mismatches()
@@ -1296,10 +1296,10 @@ function S.SendProfile(tgt)
   send("AVER\t" .. tostring(S.ADDON_VER), tgt)   -- addon version, shown on hover in the Sync list (older copies ignore it)
   send("ME\t" .. S.SESSION_TOKEN, tgt)            -- if this comes back to us, its sender name is ours
   local g = S.MyGUID()
-  if g then send("GID\t" .. g, tgt) end          -- character id for the Sterling Quest Sync app (older copies ignore it)
-  -- our Sterling Quest Sync app version (older copies ignore it): the version, empty = no app,
+  if g then send("GID\t" .. g, tgt) end          -- character id for the Companion app (older copies ignore it)
+  -- our Companion app version (older copies ignore it): the version, empty = no app,
   -- nothing at all when the companion is there but its inbox doesn't say yet
-  -- level, class token and race, for the Sterling Quest Sync app's partner list (older copies ignore it)
+  -- level, class token and race, for the Companion app's partner list (older copies ignore it)
   do
     local _, cls = UnitClass("player")
     send("CHAR\t" .. tostring(UnitLevel("player") or 0) .. "\t" .. tostring(cls or "") .. "\t" .. tostring((UnitRace("player")) or ""):gsub("[\t|]", ""), tgt)
@@ -1461,7 +1461,7 @@ function S.OfflineExport(name, forceFull)
   local p = S.FindPartner(name)
   if not p then return nil, "They're not on your Sync list." end
   local lib = LD()
-  if not lib then return nil, "LibDeflate didn't load (it ships inside Sterling's Libs folder). Reinstall Sterling Quest Tracker." end
+  if not lib then return nil, "LibDeflate didn't load (it ships inside Sterling's Libs folder). Reinstall Sterling Quest Sync." end
   p.k1 = p.k1 or newKey()
   local o = offState(p.name)
   local key = sharedKey(p)
@@ -1536,7 +1536,7 @@ end
 -- Unpack a complete string into its fields. Returns a table, or nil and what is wrong with it.
 function S.OfflineRead(packed)
   local lib = LD()
-  if not lib then return nil, "LibDeflate didn't load. Reinstall Sterling Quest Tracker." end
+  if not lib then return nil, "LibDeflate didn't load. Reinstall Sterling Quest Sync." end
   local okD, bin = pcall(lib.DecodeForPrint, lib, packed)
   if not okD or not bin then return nil, "That string is damaged (it didn't decode). Copy it again, all of it." end
   local okZ, raw = pcall(lib.DecompressDeflate, lib, bin)
@@ -1546,7 +1546,7 @@ function S.OfflineRead(packed)
   if sum ~= sign("STQ", header .. "\n" .. body) then return nil, "That string is damaged (part of it is missing or changed). Copy it again, all of it." end
   local f = {}
   for piece in (header .. "^"):gmatch("(.-)%^") do f[#f + 1] = piece end
-  if f[1] ~= "O1" then return nil, "That offline string is in a format this version doesn't know. Update Sterling Quest Tracker." end
+  if f[1] ~= "O1" then return nil, "That offline string is in a format this version doesn't know. Update Sterling Quest Sync." end
   local d = { sig = sig, header = header, body = body, proto = tonumber(f[2]) or 0, from = f[3] or "", to = f[4] or "", kind = f[5], ack = tonumber(f[6]) or 0,
               carry = (f[7] or ""):match("^%x+$") and f[7]:sub(1, 32) or "", ver = (f[8] or ""):match("^[%d%.]+$") and f[8]:sub(1, 12) or nil }
   if d.kind ~= "F" and d.kind ~= "D" then return nil, "That offline string is damaged (unknown kind)." end
@@ -1560,7 +1560,7 @@ end
 --   nil, reason           refuse
 function S.OfflineCheck(d)
   if d.proto ~= S.VERSION then
-    return nil, "|cffff9b92Can't sync: update needed.|r This string was made by " .. (d.proto < S.VERSION and "an older" or "a newer") .. " Sterling Quest Tracker" .. (d.ver and (" (v" .. d.ver .. ")") or "") .. ". " .. (d.proto < S.VERSION and (d.from .. " needs to update.") or "Update yours.")
+    return nil, "|cffff9b92Can't sync: update needed.|r This string was made by " .. (d.proto < S.VERSION and "an older" or "a newer") .. " Sterling Quest Sync" .. (d.ver and (" (v" .. d.ver .. ")") or "") .. ". " .. (d.proto < S.VERSION and (d.from .. " needs to update.") or "Update yours.")
   end
   if S.IsMe(d.from) then return nil, "That's your own string. Send it to " .. d.to .. ", and paste the one they send you here." end
   if not S.IsMe(d.to) then return nil, "That string was made for " .. d.to .. ", not for this character." end
@@ -1694,7 +1694,7 @@ local function nameOK(n)
   if n == "" or #n > 24 then return nil end
   return n
 end
--- Favourite partners: up to 5 partner character ids, in order, shared with the Sterling Quest Sync app.
+-- Favourite partners: up to 5 partner character ids, in order, shared with the Companion app.
 -- The newest change wins as a whole list (SterlingQuestDB.favsChange = server time of our last change).
 S.MAX_FAVS = 5
 local function cleanFavs(list)
@@ -2036,7 +2036,7 @@ function S.AppAddonMissing()
   if type(ap) == "table" and next(ap) ~= nil then return true end
   return false
 end
--- One status per partner, worded like the Sterling Quest Sync app (0.1.24). Returns key, text, r, g, b.
+-- One status per partner, worded like the Companion app (0.1.24). Returns key, text, r, g, b.
 --   syncing   "Syncing..."                           only while a live in-game sync with them is running
 --   current   "Up to date" (green)                   we have their latest progress and it's loaded
 --   paired    "Paired. Waiting for their next save"  paired in the app, no progress from them yet
@@ -2461,7 +2461,7 @@ local function onAddonMessage(prefix, text, chan, sender)
   end
   local appv = text:match("^APPV\t(.*)$")
   if appv then
-    -- what a partner told us about their Sterling Quest Sync app; kept until they tell us otherwise
+    -- what a partner told us about their Companion app; kept until they tell us otherwise
     local p = S.FindPartner(short)
     if p then
       if appv == "" then p.app = false elseif appVerOK(appv) then p.app = appv end
@@ -2765,7 +2765,7 @@ function S.SetWaypoint(st)
   end
   if TomTom and TomTom.AddWaypoint then
     local ok, uid = pcall(TomTom.AddWaypoint, TomTom, st.map, st.x / 100, st.y / 100,
-      { title = title, persistent = false, minimap = true, world = true, crazy = true, from = "Sterling Quest Tracker" })
+      { title = title, persistent = false, minimap = true, world = true, crazy = true, from = "Sterling Quest Sync" })
     if ok and uid then wpUID = uid; return end
   end
   if C_Map and C_Map.SetUserWaypoint and UiMapPoint then
@@ -3225,7 +3225,7 @@ SlashCmdList.STERLINGQUEST = function(input)
     elseif sub == "compare" then S.SelectPartner(who); msg("Compare tab now shows " .. who .. "."); S.UI_Update()
     elseif rest ~= "" then
       if S.AddPartner(rest, true) then
-        msg("Added partner " .. rest .. ". Sterling Quest Tracker syncs quietly whenever you're both online (add them as a friend so it can tell).")
+        msg("Added partner " .. rest .. ". Sterling Quest Sync syncs quietly whenever you're both online (add them as a friend so it can tell).")
         if S.PartnerOnline(rest) then S.RequestPartner(rest) end
       end
       S.UI_Update()
