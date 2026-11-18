@@ -4,8 +4,8 @@
 ## Author: Sterling
 ## X-Website: https://github.com/SterlingAddons/SterlingQuest
 ## X-Curse-Project-ID: 1813916
-## Version: 0.3.20.01
-## X-Build: 320001
+## Version: 0.3.21
+## X-Build: 321000
 ## X-Credits: Works with Questie (the Questie team) and TomTom (Cladhaire). Bundles ChatThrottleLib (Mikk), LibDeflate (Haoqian He) and LibStub.
 ## IconTexture: Interface\AddOns\Sterling\Media\icon
 ## SavedVariables: SterlingQuestAccountDB
