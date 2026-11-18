@@ -138,6 +138,8 @@ local function progress(quest)
     return nil
 end
 
+S.QuestProgress = progress
+
 -- state: done (turned in), ready (complete, not turned in), log (working on it), none (not started)
 function S.QuestPartnerStatus(qid)
     local list = {}
@@ -150,7 +152,9 @@ function S.QuestPartnerStatus(qid)
             if snap.log[qid].complete then st = "ready" else st = "log"; if S.Opt("statusProgress", true) then extra = progress(snap.log[qid]) end end
         end
 
-        list[#list + 1] = { name = display(p.name), state = st, extra = extra }
+        local objs = (st == "log" or st == "ready") and snap.log[qid].objs or nil
+
+        list[#list + 1] = { name = display(p.name), state = st, extra = extra, objs = objs }
     end
 
     return list
@@ -599,6 +603,48 @@ end
 
 local function logText(qid) return listText(S.QuestPartnerStatus(qid), logStyle()) end
 
+-- Is one objective line finished? "1/1 Hand of Dagun", "Hand of Dagun: 1/1" or "... (Complete)"
+local function objectiveDone(text)
+    local a, b = tostring(text):match("(%d+)%s*/%s*(%d+)")
+
+    if a then return tonumber(a) >= tonumber(b) end
+
+    return tostring(text):find("%(Complete%)") ~= nil
+end
+
+S.ObjectiveDone = objectiveDone
+
+local TIP_STATE = { done = "Done", ready = "Ready to turn in", none = "Not started" }
+
+-- Hovering the status block: every partner, with each objective line for quests they're working on
+function S.QuestStatusTooltip(owner, qid)
+    local list = qid and S.QuestPartnerStatus(qid) or {}
+
+    if #list == 0 then return false end
+
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:AddLine("Party progress", 1, .82, 0)
+
+    for _, st in ipairs(list) do
+        local color = COLOR[st.state] or C_NONE
+        local right = TIP_STATE[st.state] or st.extra or "In log"
+
+        GameTooltip:AddDoubleLine(C_NAME .. st.name .. "|r", color .. right .. "|r")
+
+        if st.state == "log" then
+            for _, objective in ipairs(st.objs or {}) do
+                local text = tostring(objective)
+
+                if objectiveDone(text) then GameTooltip:AddLine("    " .. text, .49, .89, .64) else GameTooltip:AddLine("    " .. text, .75, .77, .82) end
+            end
+        end
+    end
+
+    GameTooltip:Show()
+
+    return true
+end
+
 -- Every title a quest's details can sit under: the quest log / map panel, the NPC accept and
 -- reward panels (all QuestInfoTitleHeader), and the NPC progress panel.
 local function titleHeader()
@@ -839,6 +885,11 @@ function S.UpdateQuestLogStatus()
         block.head = block:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); block.head:SetJustifyH("LEFT")
         block.moved = {}
         blocks[parent] = block
+
+        -- hover for each partner's objective lines
+        block:EnableMouse(true)
+        block:SetScript("OnEnter", function(self) S.QuestStatusTooltip(self, self.qid) end)
+        block:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
 
     for p, block in pairs(blocks) do if p ~= parent then restoreMoved(block); block.fs:SetText(""); block:Hide() end end
@@ -847,6 +898,9 @@ function S.UpdateQuestLogStatus()
 
     local qid = S.Opt("logStatus", true) and selectedQuest() or nil
     local txt = qid and logText(qid) or ""
+
+    block.qid = qid
+
     local style = logStyle()
 
     applyStyle(block)

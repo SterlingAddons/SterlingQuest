@@ -4657,6 +4657,32 @@ function S.TestModeOn()
     S.sync.lastEvent = { text = "Auto sync with Bran: 3 changes", at = now - 120 }   -- a clean "Last" line, not your real one
     S.sync.prog = nil
 
+    -- Made-up objective lines for a partner: your own objective names when the quest is in your log, with
+    -- counts worked out from the quest id and the partner, so the hover is steady and varied
+    local function fakeObjectives(qid, seed)
+        local quest = S.log and S.log[qid]
+        local own = quest and S.ObjectiveList and S.ObjectiveList(qid, quest.index) or {}
+        local objs = {}
+
+        for i, objective in ipairs(own) do
+            local text = tostring(objective.text or "")
+            local _, total = text:match("(%d+)%s*/%s*(%d+)")
+            local name = text:gsub("%s*%(Complete%)", ""):gsub("^%s*%d+%s*/%s*%d+%s*", ""):gsub(":?%s*%d+%s*/%s*%d+%s*$", "")
+
+            total = tonumber(total) or 1
+
+            if name ~= "" then objs[#objs + 1] = ((seed * 3 + i * 7) % (total + 1)) .. "/" .. total .. " " .. name end
+        end
+
+        if #objs == 0 then
+            local total = ({ 8, 10, 12, 15 })[seed % 4 + 1]
+
+            objs[1] = ((seed * 3) % total) .. "/" .. total .. " Creatures slain"
+        end
+
+        return objs
+    end
+
     -- Quest log and map/mob tooltips: a made-up mix for every quest, the same each time you hover it
     S.QuestPartnerStatus = function(qid)
         local list = {}
@@ -4666,18 +4692,17 @@ function S.TestModeOn()
             local h = (n * 7919 + i * 104729 + math.floor(n / 7) * 31) % 100
             local st, extra = "none", nil
 
+            local objs
+
             if h < 35 then st = "done" elseif h < 50 then st = "ready"
             elseif h < 78 then
                 st = "log"
+                objs = fakeObjectives(n, h)
 
-                if S.Opt("statusProgress", true) then
-                    local b = ({ 8, 10, 12, 15 })[h % 4 + 1]
-
-                    extra = (h % 3 == 0) and ((h % 2 + 1) .. " of 3 done") or ((h * 3) % b .. "/" .. b)
-                end
+                if S.Opt("statusProgress", true) and S.QuestProgress then extra = S.QuestProgress({ objs = objs }) end
             end
 
-            list[#list + 1] = { name = S.PartnerLabel and S.PartnerLabel(f.name) or f.name, state = st, extra = extra }
+            list[#list + 1] = { name = S.PartnerLabel and S.PartnerLabel(f.name) or f.name, state = st, extra = extra, objs = objs }
         end
 
         return list

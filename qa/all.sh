@@ -4,7 +4,7 @@
 cd "$(dirname "$0")"
 QA="$(pwd)"
 fail=0
-for t in t_sync t_offline t_pack t_multi t_guide t_smoke t_interop t_resync t_zone t_ahead t_online t_newpartner t_twopc t_app t_autopair t_hasapp t_face t_favs t_details t_gidcheck t_testmode t_minimap t_status t_style t_version; do
+for t in t_sync t_offline t_pack t_multi t_guide t_smoke t_interop t_resync t_zone t_ahead t_online t_newpartner t_twopc t_app t_autopair t_hasapp t_face t_favs t_details t_gidcheck t_testmode t_minimap t_status t_objtip t_style t_version; do
   out=$(timeout 600 python3 $t.py 2>&1)
   p=$(echo "$out" | grep -c "^PASS"); f=$(echo "$out" | grep -c "^FAIL")
   last=$(echo "$out" | tail -1)

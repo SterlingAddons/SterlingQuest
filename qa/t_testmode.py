@@ -84,6 +84,7 @@ mix = R.L.eval('''function(S) local seen = {}; local n = 0
   for i = 1, 4 do if a[i].state ~= b[i].state then return -2 end end
   return n end''')(R.S)
 check("quest status: all four states across quests, steady per quest", mix == 4, mix)
+check("test partners in a quest have objective lines", R.L.eval('function(S) for q = 100, 400 do for _, e in ipairs(S.QuestPartnerStatus(q)) do if e.state == "log" and not (e.objs and #e.objs > 0) then return false end end end return true end')(R.S))
 check("quest status uses nicknames", R.L.eval('function(S) return S.QuestPartnerStatus(187)[1].name end')(R.S) == "Bran")
 check("Catch-up picks Bran", R.L.eval('function(S) return S.catchupWho end')(R.S) == "Brannoc Ashvale")
 check("no TomTom arrow touched", R.L.eval('function(S) return true end')(R.S))
