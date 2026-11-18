@@ -30,10 +30,12 @@ local ROW_COLOR = { pickup = { S.AR, S.AG, S.AB }, turnin = { .49, .89, .64 }, [
                     flight = { .76, .66, 1 }, ride = { .4, .8, .9 }, hearth = { .4, .8, .9 }, dungeon = { 1, .61, .57 }, ding = { .49, .89, .64 }, skip = { 1, .61, .57 }, note = { .95, .85, .4 } }
 local ROW_LABEL = { pickup = "PICK UP", turnin = "TURN IN", ["do"] = "DO", travel = "TRAVEL", flight = "FLEW", ride = "RODE", hearth = "HEARTH", dungeon = "RAN", ding = "DING", skip = "SKIPPED", note = "NOTE" }
 
+-- Does this event get a pin on the map?
 local function isPinEvent(e)
     return e.x and (e.k == "T" or e.k == "A" or e.k == "O" or e.k == "F" or e.k == "B" or e.k == "H" or e.k == "D" or e.k == "K" or e.k == "N")
 end
 
+-- "1h 05m" from seconds
 local function fmtDur(sec)
     sec = math.max(0, math.floor(sec or 0))
 
@@ -71,6 +73,7 @@ local function artInfo(map)
     return info
 end
 
+-- The explored-area textures for a map (cached)
 local function exploredInfo(map)
     if fogCache[map] ~= nil then return fogCache[map] or nil end
 
@@ -89,11 +92,12 @@ end
 
 local revealHit, revealMiss
 
+-- Draws a map's art: base tiles, then explored and revealed areas
 local function drawArt(map)
     revealHit, revealMiss = 0, 0
 
-    for _, t in ipairs(tiles) do t:Hide() end
-    for _, t in ipairs(fogs) do t:Hide() end
+    for _, tile in ipairs(tiles) do tile:Hide() end
+    for _, fog in ipairs(fogs) do fog:Hide() end
 
     local info = artInfo(map)
 
@@ -123,17 +127,17 @@ local function drawArt(map)
     for i, fileID in ipairs(info.tex) do
         n = n + 1
 
-        local t = tiles[n]
+        local texture = tiles[n]
 
-        if not t then t = art:CreateTexture(nil, "BACKGROUND", nil, 0); tiles[n] = t end
+        if not texture then texture = art:CreateTexture(nil, "BACKGROUND", nil, 0); tiles[n] = texture end
 
         local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
 
-        t:SetTexture(fileID); t:SetTexCoord(0, 1, 0, 1)
-        t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", art, "TOPLEFT", col * info.tw * sx, -row * info.th * sy)
-        t:SetSize(info.tw * sx, info.th * sy)
-        t:Show()
+        texture:SetTexture(fileID); texture:SetTexCoord(0, 1, 0, 1)
+        texture:ClearAllPoints()
+        texture:SetPoint("TOPLEFT", art, "TOPLEFT", col * info.tw * sx, -row * info.th * sy)
+        texture:SetSize(info.tw * sx, info.th * sy)
+        texture:Show()
     end
 
     -- Explored patches (same layout rules as Blizzard's MapExplorationDataProvider), plus every
@@ -172,37 +176,37 @@ local function drawArt(map)
         local TILE = 256
         local f = 0
 
-        for _, e in ipairs(patches) do
-            local wide, tall = math.ceil(e.textureWidth / TILE), math.ceil(e.textureHeight / TILE)
+        for _, patch in ipairs(patches) do
+            local wide, tall = math.ceil(patch.textureWidth / TILE), math.ceil(patch.textureHeight / TILE)
 
             for j = 1, tall do
                 local ph, fh
 
-                if j < tall then ph, fh = TILE, TILE else ph = e.textureHeight % TILE; if ph == 0 then ph = TILE end; fh = 16; while fh < ph do fh = fh * 2 end end
+                if j < tall then ph, fh = TILE, TILE else ph = patch.textureHeight % TILE; if ph == 0 then ph = TILE end; fh = 16; while fh < ph do fh = fh * 2 end end
 
                 for k = 1, wide do
                     local pw, fw
 
-                    if k < wide then pw, fw = TILE, TILE else pw = e.textureWidth % TILE; if pw == 0 then pw = TILE end; fw = 16; while fw < pw do fw = fw * 2 end end
+                    if k < wide then pw, fw = TILE, TILE else pw = patch.textureWidth % TILE; if pw == 0 then pw = TILE end; fw = 16; while fw < pw do fw = fw * 2 end end
 
-                    local id = e.fileDataIDs[(j - 1) * wide + k]
+                    local id = patch.fileDataIDs[(j - 1) * wide + k]
 
                     if id then
                         f = f + 1
 
-                        local t = fogs[f]
+                        local texture = fogs[f]
 
-                        if not t then t = art:CreateTexture(nil, "BACKGROUND", nil, 1); fogs[f] = t end
+                        if not texture then texture = art:CreateTexture(nil, "BACKGROUND", nil, 1); fogs[f] = texture end
 
-                        local okT = t:SetTexture(id)
+                        local okT = texture:SetTexture(id)
 
-                        if okT == false then t:Hide(); t:SetTexture(nil); revealMiss = (revealMiss or 0) + 1 else revealHit = (revealHit or 0) + 1 end
+                        if okT == false then texture:Hide(); texture:SetTexture(nil); revealMiss = (revealMiss or 0) + 1 else revealHit = (revealHit or 0) + 1 end
 
-                        t:SetTexCoord(0, pw / fw, 0, ph / fh)
-                        t:ClearAllPoints()
-                        t:SetPoint("TOPLEFT", art, "TOPLEFT", (e.offsetX + (k - 1) * TILE) * sx, -(e.offsetY + (j - 1) * TILE) * sy)
-                        t:SetSize(pw * sx, ph * sy)
-                        t:Show()
+                        texture:SetTexCoord(0, pw / fw, 0, ph / fh)
+                        texture:ClearAllPoints()
+                        texture:SetPoint("TOPLEFT", art, "TOPLEFT", (patch.offsetX + (k - 1) * TILE) * sx, -(patch.offsetY + (j - 1) * TILE) * sy)
+                        texture:SetSize(pw * sx, ph * sy)
+                        texture:Show()
                     end
                 end
             end
@@ -220,49 +224,52 @@ local function sessionMaps()
 
     if not session then return list end
 
-    for _, p in ipairs(session.trail) do if p.map and not seen[p.map] then seen[p.map] = true; list[#list + 1] = p.map end end
-    for _, e in ipairs(session.events) do if e.map and not seen[e.map] then seen[e.map] = true; list[#list + 1] = e.map end end
+    for _, point in ipairs(session.trail) do if point.map and not seen[point.map] then seen[point.map] = true; list[#list + 1] = point.map end end
+    for _, event in ipairs(session.events) do if event.map and not seen[event.map] then seen[event.map] = true; list[#list + 1] = event.map end end
 
     return list
 end
 
+-- The map the session was on at a time
 local function sessionMapAt(t)
     if not session then return nil end
 
     local m
 
-    for _, p in ipairs(session.trail) do if p.t <= t then m = p.map else break end end
+    for _, point in ipairs(session.trail) do if point.t <= t then m = point.map else break end end
 
     return m or (session.trail[1] and session.trail[1].map)
 end
 
+-- Where the trail was at a time, on a map
 local function trailPosAt(t, map)
-    local tr = session and session.trail or {}
+    local trail = session and session.trail or {}
     local prev
 
-    for _, p in ipairs(tr) do
-        if p.t > t then
-            if prev and prev.map == map and p.map == map and not p.brk then
-                local f = (t - prev.t) / math.max(1, p.t - prev.t)
+    for _, point in ipairs(trail) do
+        if point.t > t then
+            if prev and prev.map == map and point.map == map and not point.brk then
+                local f = (t - prev.t) / math.max(1, point.t - prev.t)
 
-                return prev.x + (p.x - prev.x) * f, prev.y + (p.y - prev.y) * f
+                return prev.x + (point.x - prev.x) * f, prev.y + (point.y - prev.y) * f
             end
 
             return prev and prev.map == map and prev.x or nil, prev and prev.map == map and prev.y or nil
         end
 
-        prev = p
+        prev = point
     end
 
     if prev and prev.map == map then return prev.x, prev.y end
 end
 
+-- Which pins are on which map
 local function indexPins()
     pinIndex = {}
 
     local n = 0
 
-    for _, e in ipairs(session.events) do if isPinEvent(e) then n = n + 1; pinIndex[e] = n end end
+    for _, event in ipairs(session.events) do if isPinEvent(event) then n = n + 1; pinIndex[event] = n end end
 end
 
 ---------------------------------------------------------------------------
@@ -282,6 +289,7 @@ local function joinNames(list, max)
     return s
 end
 
+-- The timeline: the session split into zones, each with what happened there
 local function buildTimeline()
     local zones = {}
 
@@ -290,6 +298,7 @@ local function buildTimeline()
     local ev = session.events
     local inProg, inOrder = {}, {}     -- quests in the log right now (by qid), names in pick-up order
 
+    -- The quests in progress, in the order they were picked up
     local function progList()
         local l = {}
 
@@ -302,21 +311,23 @@ local function buildTimeline()
     do
         local picked = {}
 
-        for _, e in ipairs(ev) do
-            if e.k == "A" and e.q then picked[e.q] = true
-            elseif (e.k == "T" or (e.k == "N" and e.text and e.text:match("^Abandoned "))) and e.q and not picked[e.q] and not inProg[e.q] then
-                inProg[e.q] = e.quest or (e.text and e.text:match("^Abandoned (.+)$")) or ("Quest #" .. e.q); inOrder[#inOrder + 1] = e.q
+        for _, event in ipairs(ev) do
+            if event.k == "A" and event.q then picked[event.q] = true
+            elseif (event.k == "T" or (event.k == "N" and event.text and event.text:match("^Abandoned "))) and event.q and not picked[event.q] and not inProg[event.q] then
+                inProg[event.q] = event.quest or (event.text and event.text:match("^Abandoned (.+)$")) or ("Quest #" .. event.q); inOrder[#inOrder + 1] = event.q
             end
         end
     end
 
     local zone, pend
 
+    -- Starts a new zone in the timeline
     local function newZone(map, t)
         zone = { map = map, name = S.MapName(map), t = t, rows = {} }
         zones[#zones + 1] = zone
     end
 
+    -- Writes out the place being collected as a timeline row
     local function flush(untilT)
         if not pend then return end
 
@@ -333,63 +344,64 @@ local function buildTimeline()
         pend = nil
     end
 
+    -- Starts collecting a new place if none is open
     local function touch(e)
         if not pend then pend = { t = e.t, places = {}, seen = {}, deaths = 0, x = e.x, y = e.y } end
     end
 
     local curMap
 
-    for _, e in ipairs(ev) do
+    for _, event in ipairs(ev) do
         -- dungeon exits report the instance map; keep them inside the outer zone
-        local m = (e.k == "D") and curMap or (e.map or curMap or (session.trail[1] and session.trail[1].map))
+        local m = (event.k == "D") and curMap or (event.map or curMap or (session.trail[1] and session.trail[1].map))
 
         if m ~= curMap then
-            flush(e.t)
+            flush(event.t)
 
             curMap = m
 
-            newZone(m, e.t)
+            newZone(m, event.t)
         end
 
-        if e.k == "Z" then
-            touch(e)
+        if event.k == "Z" then
+            touch(event)
 
-            if e.text and e.text ~= "" and not pend.seen[e.text] and e.text ~= zone.name then pend.seen[e.text] = true; pend.places[#pend.places + 1] = e.text end
-        elseif e.k == "K" then
-            touch(e); pend.deaths = pend.deaths + 1
+            if event.text and event.text ~= "" and not pend.seen[event.text] and event.text ~= zone.name then pend.seen[event.text] = true; pend.places[#pend.places + 1] = event.text end
+        elseif event.k == "K" then
+            touch(event); pend.deaths = pend.deaths + 1
 
-            if e.text == "res sickness" then pend.sick = true end
-        elseif e.k == "O" then
-            touch(e)
+            if event.text == "res sickness" then pend.sick = true end
+        elseif event.k == "O" then
+            touch(event)
         else
-            flush(e.t)
+            flush(event.t)
 
-            local row = { t = e.t, map = e.map, x = e.x, y = e.y, pin = pinIndex[e] }
+            local row = { t = event.t, map = event.map, x = event.x, y = event.y, pin = pinIndex[event] }
 
-            if e.k == "A" then
-                row.kind, row.label, row.sub = "pickup", e.quest or "Quest", e.npc and ("from " .. e.npc) or nil
+            if event.k == "A" then
+                row.kind, row.label, row.sub = "pickup", event.quest or "Quest", event.npc and ("from " .. event.npc) or nil
 
-                if e.q and not inProg[e.q] then inProg[e.q] = e.quest or ("Quest #" .. e.q); inOrder[#inOrder + 1] = e.q end
-            elseif e.k == "T" then
-                row.kind, row.label, row.sub = "turnin", e.quest or "Quest", e.npc and ("to " .. e.npc) or nil
+                if event.q and not inProg[event.q] then inProg[event.q] = event.quest or ("Quest #" .. event.q); inOrder[#inOrder + 1] = event.q end
+            elseif event.k == "T" then
+                row.kind, row.label, row.sub = "turnin", event.quest or "Quest", event.npc and ("to " .. event.npc) or nil
 
-                if e.q then inProg[e.q] = nil end
-            elseif e.k == "F" then
-                row.kind, row.label, row.sub = "flight", "to " .. (e.text or "?"), e.from and ("from " .. e.from) or nil
-            elseif e.k == "B" then
-                row.kind, row.label, row.sub = "ride", "to " .. (e.text or "?"), "boat or zeppelin" .. (e.from and (" from " .. e.from) or "")
-            elseif e.k == "H" then
-                row.kind, row.label, row.sub = "hearth", "to " .. (e.text or "?"), (e.from and e.from ~= "Hearthstone") and e.from or "hearthstone"
-            elseif e.k == "D" then
-                row.kind, row.label, row.sub = "dungeon", e.text or "a dungeon", e.dur and fmtDur(e.dur) or nil
-            elseif e.k == "L" then
-                row.kind, row.label = "ding", "Level " .. (e.lvl or "?")
-            elseif e.k == "N" then
-                local skipped = e.text and e.text:match("^Skipped (.+)$")
-                local aband = e.text and e.text:match("^Abandoned (.+)$")
+                if event.q then inProg[event.q] = nil end
+            elseif event.k == "F" then
+                row.kind, row.label, row.sub = "flight", "to " .. (event.text or "?"), event.from and ("from " .. event.from) or nil
+            elseif event.k == "B" then
+                row.kind, row.label, row.sub = "ride", "to " .. (event.text or "?"), "boat or zeppelin" .. (event.from and (" from " .. event.from) or "")
+            elseif event.k == "H" then
+                row.kind, row.label, row.sub = "hearth", "to " .. (event.text or "?"), (event.from and event.from ~= "Hearthstone") and event.from or "hearthstone"
+            elseif event.k == "D" then
+                row.kind, row.label, row.sub = "dungeon", event.text or "a dungeon", event.dur and fmtDur(event.dur) or nil
+            elseif event.k == "L" then
+                row.kind, row.label = "ding", "Level " .. (event.lvl or "?")
+            elseif event.k == "N" then
+                local skipped = event.text and event.text:match("^Skipped (.+)$")
+                local aband = event.text and event.text:match("^Abandoned (.+)$")
 
-                if skipped or aband then row.kind, row.label = "skip", skipped or aband; if e.q then inProg[e.q] = nil end
-                else row.kind, row.label = "note", e.text or "" end
+                if skipped or aband then row.kind, row.label = "skip", skipped or aband; if event.q then inProg[event.q] = nil end
+                else row.kind, row.label = "note", event.text or "" end
             else
                 row = nil
             end
@@ -402,8 +414,8 @@ local function buildTimeline()
 
     local stop = session.stop or time()
 
-    local function spans() for i, z in ipairs(zones) do z.t2 = zones[i + 1] and zones[i + 1].t or stop end end
-    local function hasAnchor(z) for _, r in ipairs(z.rows) do if r.kind ~= "do" and r.kind ~= "travel" then return true end end return false end
+    local function spans() for i, zone in ipairs(zones) do zone.t2 = zones[i + 1] and zones[i + 1].t or stop end end
+    local function hasAnchor(zone) for _, row in ipairs(zone.rows) do if row.kind ~= "do" and row.kind ~= "travel" then return true end end return false end
 
     -- 1. fold zone blips (quick hop over a border and back) into the zone around them
     spans()
@@ -414,16 +426,16 @@ local function buildTimeline()
         changed = false
 
         for i = 2, #zones do
-            local z, prev, nxt = zones[i], zones[i - 1], zones[i + 1]
-            local dur = z.t2 - z.t
+            local zone, prev, nxt = zones[i], zones[i - 1], zones[i + 1]
+            local dur = zone.t2 - zone.t
 
-            if (dur < 120 and nxt and nxt.map == prev.map) or (dur < 45 and not hasAnchor(z)) then
-                for _, r in ipairs(z.rows) do prev.rows[#prev.rows + 1] = r end
+            if (dur < 120 and nxt and nxt.map == prev.map) or (dur < 45 and not hasAnchor(zone)) then
+                for _, row in ipairs(zone.rows) do prev.rows[#prev.rows + 1] = row end
 
                 table.remove(zones, i)
 
                 if nxt and nxt.map == prev.map then
-                    for _, r in ipairs(nxt.rows) do prev.rows[#prev.rows + 1] = r end
+                    for _, row in ipairs(nxt.rows) do prev.rows[#prev.rows + 1] = row end
 
                     table.remove(zones, i)
                 end
@@ -436,28 +448,28 @@ local function buildTimeline()
     end
 
     -- 2. merge neighbouring do/travel rows that say the same thing, then drop the trivial ones
-    for _, z in ipairs(zones) do
+    for _, zone in ipairs(zones) do
         local out = {}
 
-        for _, r in ipairs(z.rows) do
+        for _, row in ipairs(zone.rows) do
             local last = out[#out]
 
-            if last and (r.kind == "do" or r.kind == "travel") and last.kind == r.kind and last.label == r.label then
-                last.t2 = math.max(last.t2, r.t2); last.deaths = last.deaths + r.deaths; last.sick = last.sick or r.sick
+            if last and (row.kind == "do" or row.kind == "travel") and last.kind == row.kind and last.label == row.label then
+                last.t2 = math.max(last.t2, row.t2); last.deaths = last.deaths + row.deaths; last.sick = last.sick or row.sick
 
-                for _, pl in ipairs(r.places) do
+                for _, pl in ipairs(row.places) do
                     local dup = false
 
-                    for _, q in ipairs(last.places) do if q == pl then dup = true break end end
+                    for _, place in ipairs(last.places) do if place == pl then dup = true break end end
 
                     if not dup then last.places[#last.places + 1] = pl end
                 end
             else
-                out[#out + 1] = r
+                out[#out + 1] = row
             end
         end
 
-        z.rows = {}
+        zone.rows = {}
 
         for _, r in ipairs(out) do
             if (r.kind == "do" or r.kind == "travel") and r.deaths == 0 and (r.t2 - r.t) < 90 then
@@ -482,7 +494,7 @@ local function buildTimeline()
                     r.sub = table.concat(bits, "  -  ")
                 end
 
-                z.rows[#z.rows + 1] = r
+                zone.rows[#zone.rows + 1] = r
             end
         end
     end
@@ -494,37 +506,37 @@ end
 -- Timeline panel rendering
 ---------------------------------------------------------------------------
 local function rowFrame(i)
-    local r = rowFrames[i]
+    local row = rowFrames[i]
 
-    if r then return r end
+    if row then return row end
 
-    r = CreateFrame("Button", nil, content)
+    row = CreateFrame("Button", nil, content)
 
-    r:SetHeight(ROW_H)
+    row:SetHeight(ROW_H)
 
-    r.bg = r:CreateTexture(nil, "BACKGROUND"); r.bg:SetAllPoints(); r.bg:SetColorTexture(1, 1, 1, .04)
-    r.hl = r:CreateTexture(nil, "BORDER"); r.hl:SetAllPoints(); r.hl:SetColorTexture(S.AR, S.AG, S.AB, .18); r.hl:Hide()
-    r.cur = r:CreateTexture(nil, "ARTWORK"); r.cur:SetPoint("TOPLEFT"); r.cur:SetPoint("BOTTOMLEFT"); r.cur:SetWidth(3); r.cur:SetColorTexture(1, .8, .1, 1); r.cur:Hide()
-    r.badge = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); r.badge:SetPoint("LEFT", 6, 0); r.badge:SetWidth(20); r.badge:SetJustifyH("RIGHT"); r.badge:SetTextColor(.6, .65, .75)
-    r.kind = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); r.kind:SetPoint("TOPLEFT", 30, -4); r.kind:SetWidth(52); r.kind:SetJustifyH("LEFT")
-    r.label = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.label:SetPoint("TOPLEFT", 84, -4); r.label:SetPoint("RIGHT", -50, 0); r.label:SetJustifyH("LEFT"); r.label:SetWordWrap(false)
-    r.sub = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.sub:SetPoint("BOTTOMLEFT", 84, 4); r.sub:SetPoint("RIGHT", -6, 0); r.sub:SetJustifyH("LEFT"); r.sub:SetWordWrap(false); r.sub:SetTextColor(.6, .65, .75)
-    r.time = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.time:SetPoint("TOPRIGHT", -6, -4); r.time:SetTextColor(.5, .55, .65)
+    row.bg = row:CreateTexture(nil, "BACKGROUND"); row.bg:SetAllPoints(); row.bg:SetColorTexture(1, 1, 1, .04)
+    row.hl = row:CreateTexture(nil, "BORDER"); row.hl:SetAllPoints(); row.hl:SetColorTexture(S.AR, S.AG, S.AB, .18); row.hl:Hide()
+    row.cur = row:CreateTexture(nil, "ARTWORK"); row.cur:SetPoint("TOPLEFT"); row.cur:SetPoint("BOTTOMLEFT"); row.cur:SetWidth(3); row.cur:SetColorTexture(1, .8, .1, 1); row.cur:Hide()
+    row.badge = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); row.badge:SetPoint("LEFT", 6, 0); row.badge:SetWidth(20); row.badge:SetJustifyH("RIGHT"); row.badge:SetTextColor(.6, .65, .75)
+    row.kind = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); row.kind:SetPoint("TOPLEFT", 30, -4); row.kind:SetWidth(52); row.kind:SetJustifyH("LEFT")
+    row.label = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.label:SetPoint("TOPLEFT", 84, -4); row.label:SetPoint("RIGHT", -50, 0); row.label:SetJustifyH("LEFT"); row.label:SetWordWrap(false)
+    row.sub = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.sub:SetPoint("BOTTOMLEFT", 84, 4); row.sub:SetPoint("RIGHT", -6, 0); row.sub:SetJustifyH("LEFT"); row.sub:SetWordWrap(false); row.sub:SetTextColor(.6, .65, .75)
+    row.time = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.time:SetPoint("TOPRIGHT", -6, -4); row.time:SetTextColor(.5, .55, .65)
 
-    r:SetScript("OnEnter", function(self)
+    row:SetScript("OnEnter", function(self)
         self.hl:Show()
 
         if self.row and self.row.quests and #self.row.quests > 3 then
             GameTooltip:SetOwner(self, "ANCHOR_LEFT"); GameTooltip:AddLine("Quests in the log")
 
-            for _, q in ipairs(self.row.quests) do GameTooltip:AddLine(q, .85, .88, .95) end
+            for _, quest in ipairs(self.row.quests) do GameTooltip:AddLine(quest, .85, .88, .95) end
 
             GameTooltip:Show()
         end
     end)
 
-    r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
-    r:SetScript("OnClick", function(self)
+    row:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self)
         if not self.row then return end
 
         playing = false; playT = self.row.t; autoFollow = true
@@ -532,11 +544,12 @@ local function rowFrame(i)
         S.ViewerRedraw()
     end)
 
-    rowFrames[i] = r
+    rowFrames[i] = row
 
-    return r
+    return row
 end
 
+-- A zone heading in the side panel, made when first needed
 local function headFrame(i)
     local h = headFrames[i]
 
@@ -575,6 +588,7 @@ local function headFrame(i)
     return h
 end
 
+-- Draws the side panel in Compare mode
 local function drawCompare(now)
     local d = compare.diff
     local y, ri, hi = 0, 0, 0
@@ -604,12 +618,12 @@ local function drawCompare(now)
             if #sec.list == 0 then
                 ri = ri + 1
 
-                local r = rowFrame(ri); r.row = nil
+                local row = rowFrame(ri); row.row = nil
 
-                r.kind:SetText(""); r.badge:SetText(""); r.time:SetText(""); r.sub:SetText("")
-                r.label:SetText("nothing here"); r.label:SetTextColor(.5, .55, .65)
-                r.cur:Hide(); r.bg:SetColorTexture(1, 1, 1, .02)
-                r:ClearAllPoints(); r:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y); r:SetPoint("RIGHT", content, "RIGHT", 0, 0); r:Show()
+                row.kind:SetText(""); row.badge:SetText(""); row.time:SetText(""); row.sub:SetText("")
+                row.label:SetText("nothing here"); row.label:SetTextColor(.5, .55, .65)
+                row.cur:Hide(); row.bg:SetColorTexture(1, 1, 1, .02)
+                row:ClearAllPoints(); row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y); row:SetPoint("RIGHT", content, "RIGHT", 0, 0); row:Show()
 
                 y = y + ROW_H + 1
             end
@@ -621,9 +635,9 @@ local function drawCompare(now)
 
                 r.row = (not row.mineOnly) and row or nil
 
-                local c = ROW_COLOR[row.kind] or { .8, .8, .8 }
+                local color = ROW_COLOR[row.kind] or { .8, .8, .8 }
 
-                r.kind:SetText(ROW_LABEL[row.kind] or row.kind:upper()); r.kind:SetTextColor(c[1], c[2], c[3])
+                r.kind:SetText(ROW_LABEL[row.kind] or row.kind:upper()); r.kind:SetTextColor(color[1], color[2], color[3])
                 r.label:SetText(row.label or ""); r.label:SetTextColor(S.TR, S.TG, S.TB)
 
                 local sub = row.sub
@@ -647,6 +661,7 @@ local function drawCompare(now)
     content:SetHeight(math.max(y, 10))
 end
 
+-- Draws the side panel's timeline
 local function drawTimeline(now)
     for _, r in ipairs(rowFrames) do r:Hide() end
     for _, h in ipairs(headFrames) do h:Hide() end
@@ -668,41 +683,41 @@ local function drawTimeline(now)
     local curY
     local curRow, curZone
 
-    for zi, z in ipairs(timeline) do
-        if z.t <= now then curZone = zi end
+    for zi, zone in ipairs(timeline) do
+        if zone.t <= now then curZone = zi end
 
-        for _, row in ipairs(z.rows) do if row.t <= now then curRow = row end end
+        for _, row in ipairs(zone.rows) do if row.t <= now then curRow = row end end
     end
 
-    for zi, z in ipairs(timeline) do
+    for zi, zone in ipairs(timeline) do
         hi = hi + 1
 
         local h = headFrame(hi)
 
-        h.zone, h.idx = z, zi
+        h.zone, h.idx = zone, zi
 
         h.chev:SetText(collapsed[zi] and "+" or "-")
-        h.name:SetText(z.name)
+        h.name:SetText(zone.name)
 
         if zi == curZone then h.name:SetTextColor(1, .85, .3) else h.name:SetTextColor(.9, .92, 1) end
 
-        h.time:SetText(S.Clock(z.t) .. "  " .. fmtDur(z.t2 - z.t))
+        h.time:SetText(S.Clock(zone.t) .. "  " .. fmtDur(zone.t2 - zone.t))
         h:ClearAllPoints(); h:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -y); h:SetPoint("RIGHT", content, "RIGHT", 0, 0)
         h:Show()
 
         y = y + HEAD_H + 1
 
         if not collapsed[zi] then
-            for _, row in ipairs(z.rows) do
+            for _, row in ipairs(zone.rows) do
                 ri = ri + 1
 
                 local r = rowFrame(ri)
 
                 r.row = row
 
-                local c = ROW_COLOR[row.kind] or { .8, .8, .8 }
+                local color = ROW_COLOR[row.kind] or { .8, .8, .8 }
 
-                r.kind:SetText(ROW_LABEL[row.kind] or row.kind:upper()); r.kind:SetTextColor(c[1], c[2], c[3])
+                r.kind:SetText(ROW_LABEL[row.kind] or row.kind:upper()); r.kind:SetTextColor(color[1], color[2], color[3])
                 r.label:SetText(row.label or "")
                 r.sub:SetText(row.sub or "")
                 r.badge:SetText(row.pin and tostring(row.pin) or "")
@@ -749,6 +764,7 @@ local function getLine()
     return l
 end
 
+-- The next free trail dot
 local function getDot()
     dotN = dotN + 1
 
@@ -782,23 +798,24 @@ local function segment(x1, y1, x2, y2, r, g, b, a, w)
     end
 end
 
+-- The next free pin
 local function getPin()
     pinN = pinN + 1
 
-    local p = pins[pinN]
+    local pin = pins[pinN]
 
-    if not p then
-        p = CreateFrame("Frame", nil, canvas)
+    if not pin then
+        pin = CreateFrame("Frame", nil, canvas)
 
-        p:SetSize(14, 14); p:SetFrameLevel(canvas:GetFrameLevel() + 5)
+        pin:SetSize(14, 14); pin:SetFrameLevel(canvas:GetFrameLevel() + 5)
 
-        p.ring = p:CreateTexture(nil, "BACKGROUND"); p.ring:SetPoint("TOPLEFT", -1, 1); p.ring:SetPoint("BOTTOMRIGHT", 1, -1); p.ring:SetColorTexture(0, 0, 0, .7)
-        p.bg = p:CreateTexture(nil, "BORDER"); p.bg:SetAllPoints(); p.bg:SetColorTexture(1, 1, 1, 1)
-        p.num = p:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); p.num:SetPoint("CENTER", 0, 0); p.num:SetTextColor(S.TR, S.TG, S.TB)
+        pin.ring = pin:CreateTexture(nil, "BACKGROUND"); pin.ring:SetPoint("TOPLEFT", -1, 1); pin.ring:SetPoint("BOTTOMRIGHT", 1, -1); pin.ring:SetColorTexture(0, 0, 0, .7)
+        pin.bg = pin:CreateTexture(nil, "BORDER"); pin.bg:SetAllPoints(); pin.bg:SetColorTexture(1, 1, 1, 1)
+        pin.num = pin:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pin.num:SetPoint("CENTER", 0, 0); pin.num:SetTextColor(S.TR, S.TG, S.TB)
 
-        p.num:SetShadowColor(0, 0, 0, 1); p.num:SetShadowOffset(1, -1)
-        p:EnableMouse(true)
-        p:SetScript("OnEnter", function(self)
+        pin.num:SetShadowColor(0, 0, 0, 1); pin.num:SetShadowOffset(1, -1)
+        pin:EnableMouse(true)
+        pin:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(self.title or "")
 
             if self.sub then GameTooltip:AddLine(self.sub, .8, .83, .9, true) end
@@ -807,8 +824,8 @@ local function getPin()
             GameTooltip:Show()
         end)
 
-        p:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        p:SetScript("OnMouseUp", function(self, btn)
+        pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        pin:SetScript("OnMouseUp", function(self, btn)
             if not self.ev then return end
             if btn == "RightButton" then
                 if S.SetWaypoint and self.ev.map and self.ev.x then
@@ -820,20 +837,21 @@ local function getPin()
             end
         end)
 
-        pins[pinN] = p
+        pins[pinN] = pin
     end
 
-    return p
+    return pin
 end
 
+-- Draws the map window: art, trail, pins, side panel
 local function redraw()
     if not win or not win:IsShown() then return end
 
     lineN, dotN, pinN = 0, 0, 0
 
-    for _, l in ipairs(lines) do l:Hide() end
-    for _, d in ipairs(dots) do d:Hide() end
-    for _, p in ipairs(pins) do p:Hide() end
+    for _, line in ipairs(lines) do line:Hide() end
+    for _, dot in ipairs(dots) do dot:Hide() end
+    for _, pin in ipairs(pins) do pin:Hide() end
 
     if marker then marker:Hide() end
     if not session then
@@ -874,32 +892,32 @@ local function redraw()
     -- trail
     local prev
 
-    for _, p in ipairs(session.trail) do
-        if p.map == map and prev and prev.map == map and not p.brk then
-            local past = p.t <= now
+    for _, point in ipairs(session.trail) do
+        if point.map == map and prev and prev.map == map and not point.brk then
+            local past = point.t <= now
 
-            segment(prev.x / 100 * W, prev.y / 100 * H, p.x / 100 * W, p.y / 100 * H, .23, .48, 1, past and .95 or .4, past and 3 or 2)
+            segment(prev.x / 100 * W, prev.y / 100 * H, point.x / 100 * W, point.y / 100 * H, .23, .48, 1, past and .95 or .4, past and 3 or 2)
         end
 
-        prev = p
+        prev = point
     end
 
     -- pins
-    for _, e in ipairs(session.events) do
-        if isPinEvent(e) and e.map == map then
-            local n = pinIndex[e]
-            local p = getPin()
-            local c = S.PinColors[e.k] or { .5, .5, .5 }
+    for _, event in ipairs(session.events) do
+        if isPinEvent(event) and event.map == map then
+            local n = pinIndex[event]
+            local pin = getPin()
+            local color = S.PinColors[event.k] or { .5, .5, .5 }
 
-            p.bg:SetVertexColor(c[1], c[2], c[3], 1)
+            pin.bg:SetVertexColor(color[1], color[2], color[3], 1)
 
-            p.num:SetText(n); p.n = n; p.ev = e
-            p.title, p.sub = S.PinLabel(e)
-            p.sub = (p.sub and (p.sub .. "  ") or "") .. S.Clock(e.t)
+            pin.num:SetText(n); pin.n = n; pin.ev = event
+            pin.title, pin.sub = S.PinLabel(event)
+            pin.sub = (pin.sub and (pin.sub .. "  ") or "") .. S.Clock(event.t)
 
-            p:ClearAllPoints(); p:SetPoint("CENTER", canvas, "TOPLEFT", e.x / 100 * W, -e.y / 100 * H)
-            p:SetAlpha(e.t <= now and .8 or .35)
-            p:Show()
+            pin:ClearAllPoints(); pin:SetPoint("CENTER", canvas, "TOPLEFT", event.x / 100 * W, -event.y / 100 * H)
+            pin:SetAlpha(event.t <= now and .8 or .35)
+            pin:Show()
         end
     end
 
@@ -977,6 +995,7 @@ end
 
 local queued = false
 
+-- Redraws the map window on the next frame
 function S.ViewerRedraw()
     if queued then return end
 
@@ -1023,9 +1042,10 @@ local function build()
     win.next = CreateFrame("Button", nil, win, "UIPanelButtonTemplate"); win.next:SetSize(26, 20); win.next:SetPoint("TOPRIGHT", -30, -11); win.next:SetText(">")
     win.prev = CreateFrame("Button", nil, win, "UIPanelButtonTemplate"); win.prev:SetSize(26, 20); win.prev:SetPoint("RIGHT", win.next, "LEFT", -2, 0); win.prev:SetText("<")
 
+    -- Moves to the previous or next map the session visited
     local function step(d)
         local maps = sessionMaps(); if #maps < 2 then return end
-        local idx = 1; for i, m in ipairs(maps) do if m == viewMap then idx = i end end
+        local idx = 1; for i, map in ipairs(maps) do if map == viewMap then idx = i end end
 
         idx = ((idx - 1 + d) % #maps) + 1
         viewMap = maps[idx]; autoFollow = false; S.ViewerRedraw()
@@ -1062,6 +1082,7 @@ local function build()
 
     view:EnableMouse(true); view:EnableMouseWheel(true)
 
+    -- The cursor's spot inside the map view
     local function cursorInView()
         local x, y = GetCursorPosition(); local sc = view:GetEffectiveScale()
 
@@ -1134,14 +1155,15 @@ local function build()
     panel.tabs = CreateFrame("Frame", nil, panel); panel.tabs:SetPoint("TOPLEFT", 4, -4); panel.tabs:SetPoint("TOPRIGHT", -4, -4); panel.tabs:SetHeight(24)
     panel.stats = panel.tabs:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); panel.stats:SetPoint("BOTTOMLEFT", panel.tabs, "BOTTOMLEFT", 4, -14); panel.stats:SetPoint("RIGHT", -4, 0); panel.stats:SetJustifyH("LEFT"); panel.stats:SetTextColor(.6, .65, .75); panel.stats:SetWordWrap(false)
 
+    -- A side panel tab (Timeline, Compare)
     local function mkTab(text, mode, anchor)
-        local b = CreateFrame("Button", nil, panel.tabs, "UIPanelButtonTemplate"); b:SetSize(96, 20); b:SetText(text)
+        local button = CreateFrame("Button", nil, panel.tabs, "UIPanelButtonTemplate"); button:SetSize(96, 20); button:SetText(text)
 
-        if anchor then b:SetPoint("LEFT", anchor, "RIGHT", 4, 0) else b:SetPoint("TOPLEFT", 0, 0) end
+        if anchor then button:SetPoint("LEFT", anchor, "RIGHT", 4, 0) else button:SetPoint("TOPLEFT", 0, 0) end
 
-        b:SetScript("OnClick", function() panelMode = mode; S.ViewerRedraw() end)
+        button:SetScript("OnClick", function() panelMode = mode; S.ViewerRedraw() end)
 
-        return b
+        return button
     end
 
     panel.tabs.tl = mkTab("Timeline", "timeline")
@@ -1226,6 +1248,7 @@ local function build()
     win:Hide()
 end
 
+-- Starts or stops playback in the map window
 function S.ViewerPlay(on)
     if not session then return end
 
@@ -1237,6 +1260,7 @@ function S.ViewerPlay(on)
     S.ViewerRedraw()
 end
 
+-- Which session the map window shows
 function S.ViewerSetSession(sess)
     if compare and sess ~= compare.theirs then compare = nil; panelMode = "timeline" end
 
@@ -1269,6 +1293,7 @@ function S.ViewerCompare(a, b)
     msg(string.format("Comparing %s's \"%s\" against your \"%s\": %d extra, %d missed, %d same.", theirs.char or "?", theirs.name, mine.name, #diff.extra, #diff.missed, #diff.same))
 end
 
+-- Opens or closes the map window
 function S.ViewerToggle()
     if not win then build() end
     if win:IsShown() then win:Hide() return end
@@ -1286,6 +1311,7 @@ end
 -- Keep the world-map overlay and the viewer on the same session.
 local oldSet = S.MapSetSession
 
+-- Keeps the map window on the same session as the world map
 function S.MapSetSession(sess)
     if oldSet then oldSet(sess) end
 

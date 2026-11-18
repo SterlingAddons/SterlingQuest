@@ -12,6 +12,7 @@ local lastPlace, inInst, instName, instStart
 
 local function safe(s, n) return (tostring(s or ""):gsub("[%^:;,|~]", " "):gsub("%s+", " "):sub(1, n or 40)) end
 
+-- A session's length as "1h 20m"
 function S.Duration(sess)
     local d = (sess.stop or time()) - (sess.start or time())
     local h, m = math.floor(d / 3600), math.floor((d % 3600) / 60)
@@ -29,6 +30,7 @@ function S.Clock(t) return (date("%I:%M %p", t):gsub("^0", "")) end
 function S.IsRecording() return rec ~= nil end
 function S.Recording() return rec end
 
+-- Adds an event (quest, flight, death...) to the recording, with where it happened
 local function addEvent(k, fields)
     if not rec then return end
 
@@ -49,6 +51,7 @@ local function addEvent(k, fields)
     return e
 end
 
+-- Adds your position to the trail when you've moved far enough
 local function addPoint(force)
     if not rec then return end
     if inInst then return end
@@ -61,8 +64,8 @@ local function addPoint(force)
 
     if not map then return end
 
-    local tr = rec.trail
-    local last = tr[#tr]
+    local trail = rec.trail
+    local last = trail[#trail]
 
     if last and last.map == map and not force then
         local dx, dy = x - last.x, y - last.y
@@ -70,10 +73,11 @@ local function addPoint(force)
         if dx * dx + dy * dy < 0.09 then return end -- hasn't moved ~0.3% of the map
     end
 
-    tr[#tr + 1] = { t = time(), map = map, x = math.floor(x * 10 + .5) / 10, y = math.floor(y * 10 + .5) / 10, brk = rec._broke or nil }
+    trail[#trail + 1] = { t = time(), map = map, x = math.floor(x * 10 + .5) / 10, y = math.floor(y * 10 + .5) / 10, brk = rec._broke or nil }
     rec._broke = nil
 end
 
+-- Starts recording (or carries on an unfinished one)
 function S.RecordStart(name, auto)
     if rec then if not auto then msg("Already recording.") end return end
 
@@ -118,6 +122,7 @@ function S.RecordStart(name, auto)
     if S.UI_Update then S.UI_Update() end
 end
 
+-- Stops recording and saves the session (or throws it away)
 function S.RecordStop(discard)
     if not rec then msg("Not recording.") return end
 
@@ -151,6 +156,7 @@ function S.Trash(sess)
     while #SterlingQuestDB.trash > 5 do table.remove(SterlingQuestDB.trash) end
 end
 
+-- Empties the deleted sessions
 function S.EmptyTrash()
     local n = SterlingQuestDB.trash and #SterlingQuestDB.trash or 0
 
@@ -161,6 +167,7 @@ function S.EmptyTrash()
     if S.UI_Update then S.UI_Update() end
 end
 
+-- Brings back the session deleted last
 function S.Restore()
     local t = SterlingQuestDB.trash and table.remove(SterlingQuestDB.trash, 1)
 
@@ -181,22 +188,22 @@ function S.CleanSession(sess)
     -- names
     local known = {}
 
-    for _, e in ipairs(ev) do if e.q and e.quest and not e.quest:find("^Quest #") then known[e.q] = e.quest; if S.LearnName then S.LearnName(e.q, e.quest) end end end
-    for _, e in ipairs(ev) do
-        if e.q and (not e.quest or e.quest:find("^Quest #")) then
-            local t = known[e.q] or S.QuestName(e.q)
+    for _, event in ipairs(ev) do if event.q and event.quest and not event.quest:find("^Quest #") then known[event.q] = event.quest; if S.LearnName then S.LearnName(event.q, event.quest) end end end
+    for _, event in ipairs(ev) do
+        if event.q and (not event.quest or event.quest:find("^Quest #")) then
+            local t = known[event.q] or S.QuestName(event.q)
 
-            if t and not t:find("^Quest #") then e.quest = t; known[e.q] = t end
+            if t and not t:find("^Quest #") then event.quest = t; known[event.q] = t end
         end
 
         -- notes written with an unresolved name get the real one once we know it
-        if e.k == "N" and e.q and e.text then
-            local verb = e.text:match("^(%a+) Quest #%d+$")
+        if event.k == "N" and event.q and event.text then
+            local verb = event.text:match("^(%a+) Quest #%d+$")
 
             if verb then
-                local t = known[e.q] or S.QuestName(e.q)
+                local t = known[event.q] or S.QuestName(event.q)
 
-                if t and not t:find("^Quest #") then e.text = verb .. " " .. t end
+                if t and not t:find("^Quest #") then event.text = verb .. " " .. t end
             end
         end
     end
@@ -206,34 +213,34 @@ function S.CleanSession(sess)
     local drop = {}       -- indices to remove
     local lastA = {}      -- qid -> index of the last A in the session
 
-    for i, e in ipairs(ev) do if e.k == "A" and e.q then lastA[e.q] = i end end
-    for i, e in ipairs(ev) do
-        if e.k == "A" and e.q then openA[e.q] = i
-        elseif e.k == "T" and e.q then openA[e.q] = nil
-        elseif e.k == "X" and e.q then
-            local a = openA[e.q]
+    for i, event in ipairs(ev) do if event.k == "A" and event.q then lastA[event.q] = i end end
+    for i, event in ipairs(ev) do
+        if event.k == "A" and event.q then openA[event.q] = i
+        elseif event.k == "T" and event.q then openA[event.q] = nil
+        elseif event.k == "X" and event.q then
+            local a = openA[event.q]
 
             drop[i] = true
 
-            if lastA[e.q] and lastA[e.q] > i then
+            if lastA[event.q] and lastA[event.q] > i then
                 -- picked up again later: the abandon was a hiccup, erase it and the first pick-up
-                if a then drop[a] = true; for j = a + 1, i - 1 do if ev[j].k == "O" and ev[j].q == e.q then drop[j] = true end end end
+                if a then drop[a] = true; for j = a + 1, i - 1 do if ev[j].k == "O" and ev[j].q == event.q then drop[j] = true end end end
 
-                openA[e.q] = nil
+                openA[event.q] = nil
             elseif a then
-                for j = a + 1, i - 1 do if ev[j].k == "O" and ev[j].q == e.q then drop[j] = true end end
+                for j = a + 1, i - 1 do if ev[j].k == "O" and ev[j].q == event.q then drop[j] = true end end
 
                 local A = ev[a]
-                local name = known[e.q] or A.quest or e.quest or ("Quest #" .. e.q)
+                local name = known[event.q] or A.quest or event.quest or ("Quest #" .. event.q)
 
-                ev[a] = { t = A.t, k = "N", q = e.q, map = A.map, x = A.x, y = A.y, text = "Skipped " .. name }
-                openA[e.q] = nil
+                ev[a] = { t = A.t, k = "N", q = event.q, map = A.map, x = A.x, y = A.y, text = "Skipped " .. name }
+                openA[event.q] = nil
             else
                 -- abandoned something picked up before the recording started: keep a short note
-                ev[i] = { t = e.t, k = "N", q = e.q, map = e.map, x = e.x, y = e.y, text = "Abandoned " .. (known[e.q] or e.quest or ("Quest #" .. e.q)) }
+                ev[i] = { t = event.t, k = "N", q = event.q, map = event.map, x = event.x, y = event.y, text = "Abandoned " .. (known[event.q] or event.quest or ("Quest #" .. event.q)) }
                 drop[i] = nil
 
-                for j = 1, i - 1 do if ev[j].k == "O" and ev[j].q == e.q then drop[j] = true end end
+                for j = 1, i - 1 do if ev[j].k == "O" and ev[j].q == event.q then drop[j] = true end end
             end
         end
     end
@@ -243,13 +250,14 @@ function S.CleanSession(sess)
 
     local out = {}
 
-    for i, e in ipairs(ev) do if not drop[i] then out[#out + 1] = e end end
+    for i, event in ipairs(ev) do if not drop[i] then out[#out + 1] = event end end
 
     sess.events = out
 
     return sess
 end
 
+-- Adds a note to the recording
 function S.RecordNote(text)
     if not rec then return false end
 
@@ -261,6 +269,7 @@ end
 -- Trail thinning while recording, every ~10 minutes, so long sessions never pile up.
 local lastThin = 0
 
+-- Thins a long trail now and then while recording, so it doesn't grow too big
 local function maybeThin()
     if not rec or #rec.trail < 400 then return end
     if time() - lastThin < 600 then return end
@@ -275,11 +284,12 @@ local function maybeThin()
 
     local thinned = S.ThinTrail(head)
 
-    for _, p in ipairs(tail) do thinned[#thinned + 1] = p end
+    for _, point in ipairs(tail) do thinned[#thinned + 1] = point end
 
     rec.trail = thinned
 end
 
+-- Names, thins and saves a finished session
 function S.SaveSession(sess, name)
     sess.name = name or sess.name or (date("%a %I:%M %p", sess.start):gsub(" 0", " "))
     sess.trail = S.ThinTrail(sess.trail)
@@ -293,7 +303,7 @@ end
 -- Last moment we know the recording was live: newest trail point, event, or heartbeat.
 local function lastActivity(r)
     local t = r.start or 0
-    local tr = r.trail and r.trail[#r.trail]; if tr and tr.t and tr.t > t then t = tr.t end
+    local trail = r.trail and r.trail[#r.trail]; if trail and trail.t and trail.t > t then t = trail.t end
     local ev = r.events and r.events[#r.events]; if ev and ev.t and ev.t > t then t = ev.t end
 
     if r.lastSeen and r.lastSeen > t then t = r.lastSeen end
@@ -301,6 +311,7 @@ local function lastActivity(r)
     return t
 end
 
+-- "5 min ago", "2 h ago"...
 local function agoText(sec)
     sec = math.max(0, sec or 0)
 
@@ -349,17 +360,17 @@ function S.RecordInit()
         C_Timer.After(4, function() if not rec then S.RecordStart(nil, true) end end)
     end
 
-    local f = CreateFrame("Frame")
+    local frame = CreateFrame("Frame")
     local acc = 0
 
-    f:SetScript("OnUpdate", function(_, dt)
+    frame:SetScript("OnUpdate", function(_, dt)
         acc = acc + dt
 
         if acc < 2 then return end
 
         acc = 0
 
-        if S.pendingSave and not S.InCombat() then local s = S.pendingSave; S.pendingSave = nil; if S.UI_SaveDialog then S.UI_SaveDialog(s) end end
+        if S.pendingSave and not S.InCombat() then local pendingSave = S.pendingSave; S.pendingSave = nil; if S.UI_SaveDialog then S.UI_SaveDialog(pendingSave) end end
         if not rec then return end
 
         rec.lastSeen = time()
@@ -405,6 +416,7 @@ end
 local function r1(v) return math.floor(v * 10 + .5) / 10 end
 local function placeNow() local sub = GetSubZoneText and GetSubZoneText() or ""; return sub ~= "" and sub or (GetZoneText and GetZoneText() or "") end
 
+-- Do you have resurrection sickness (so you took the spirit healer)?
 local function hasResSickness()
     if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID and C_UnitAuras.GetPlayerAuraBySpellID(15007) then return true end
     if UnitDebuff then for i = 1, 40 do local n = UnitDebuff("player", i); if not n then break end; if n == "Resurrection Sickness" then return true end end end
@@ -412,6 +424,7 @@ local function hasResSickness()
     return false
 end
 
+-- Notices flights, boats, hearths and deaths while recording
 function S.TravelTick()
     if not rec or inInst then return end
 
@@ -466,7 +479,7 @@ function S.TravelTick()
 
         local recentDeath = false
 
-        for i = #rec.events, math.max(1, #rec.events - 3), -1 do local e = rec.events[i]; if e.k == "K" and time() - e.t < 120 then recentDeath = true end end
+        for i = #rec.events, math.max(1, #rec.events - 3), -1 do local event = rec.events[i]; if event.k == "K" and time() - event.t < 120 then recentDeath = true end end
 
         if jump and not recentDeath then
             local tele = rec._tele and (time() - rec._tele.t) < 120 and rec._tele
@@ -500,6 +513,7 @@ function S.RecordFlush() if rec then addPoint(true); SterlingQuestDB.recording =
 -- Objective tracking, called from Recalc on every quest log update.
 local function objectivesFor(qid, logIndex) return S.ObjectiveList(qid, logIndex) end
 
+-- Notices quests picked up, turned in and abandoned since the last check
 function S.RecordTick(why)
     if not rec then return end
 
@@ -512,11 +526,11 @@ function S.RecordTick(why)
         local prev = objState[qid]
         local now = {}
 
-        for idx, o in ipairs(objs) do
-            now[idx] = o.finished and true or false
+        for idx, objective in ipairs(objs) do
+            now[idx] = objective.finished and true or false
 
-            if seeded and prev and o.finished and not prev[idx] then
-                addEvent("O", { q = qid, quest = safe(q.title), text = safe(((o.text or ""):gsub(":%s*$", "")), 80) })
+            if seeded and prev and objective.finished and not prev[idx] then
+                addEvent("O", { q = qid, quest = safe(q.title), text = safe(((objective.text or ""):gsub(":%s*$", "")), 80) })
             end
         end
 
@@ -528,6 +542,7 @@ function S.RecordTick(why)
     seeded = true
 end
 
+-- Records quest and level events from the game's events
 function S.RecordEvent(ev, a1, a2)
     if not rec then return end
     if ev == "QUEST_ACCEPTED" then
@@ -543,19 +558,19 @@ function S.RecordEvent(ev, a1, a2)
             title = S.names[qid] or S.QuestName(qid)
         end
 
-        local e = addEvent("A", { q = qid, quest = safe(title or ("Quest " .. qid)), npc = safe(UnitName("npc")) })
+        local event = addEvent("A", { q = qid, quest = safe(title or ("Quest " .. qid)), npc = safe(UnitName("npc")) })
 
         -- Shared quests arrive before the log updates; fix the name up a moment later.
-        if e and e.quest:find("^Quest #") then
+        if event and event.quest:find("^Quest #") then
             for _, d in ipairs({ 1, 3, 8 }) do
-                C_Timer.After(d, function() if e.quest:find("^Quest #") then S.Refresh(); local t = S.QuestName(qid); if t and not t:find("^Quest #") then e.quest = safe(t) end end end)
+                C_Timer.After(d, function() if event.quest:find("^Quest #") then S.Refresh(); local t = S.QuestName(qid); if t and not t:find("^Quest #") then event.quest = safe(t) end end end)
             end
         end
     elseif ev == "QUEST_TURNED_IN" then
-        local e = addEvent("T", { q = a1, quest = safe(S.names[a1] or S.QuestName(a1)), npc = safe(UnitName("npc")) })
+        local event = addEvent("T", { q = a1, quest = safe(S.names[a1] or S.QuestName(a1)), npc = safe(UnitName("npc")) })
 
-        if e and e.quest:find("^Quest #") then
-            C_Timer.After(2, function() local t = S.QuestName(a1); if t and not t:find("^Quest #") then e.quest = safe(t) end end)
+        if event and event.quest:find("^Quest #") then
+            C_Timer.After(2, function() local t = S.QuestName(a1); if t and not t:find("^Quest #") then event.quest = safe(t) end end)
         end
     elseif ev == "QUEST_REMOVED" then
         local qid = a1
@@ -604,7 +619,7 @@ end
 -- Trail thinning: drop points that sit on a straight line (Douglas-Peucker, per map run)
 ---------------------------------------------------------------------------
 local function dp(points, eps, out)
-    if #points < 3 then for _, p in ipairs(points) do out[#out + 1] = p end return end
+    if #points < 3 then for _, point in ipairs(points) do out[#out + 1] = point end return end
 
     local a, b = points[1], points[#points]
     local maxd, idx = 0, 0
@@ -639,15 +654,16 @@ local function dp(points, eps, out)
     end
 end
 
+-- Thins a trail: straight runs lose their in-between points
 function S.ThinTrail(trail)
     local out, run = {}, {}
 
     local function flush() if #run > 0 then dp(run, 0.35, out); run = {} end end
 
-    for _, p in ipairs(trail) do
-        if #run > 0 and (run[#run].map ~= p.map or p.brk) then flush() end
+    for _, point in ipairs(trail) do
+        if #run > 0 and (run[#run].map ~= point.map or point.brk) then flush() end
 
-        run[#run + 1] = p
+        run[#run + 1] = point
     end
 
     flush()
@@ -663,33 +679,35 @@ function S.AddSession(sess)
 
     S.Safe("clean", S.CleanSession, sess)
 
-    for i, s in ipairs(SterlingQuestDB.sessions) do
-        if s.id == sess.id then SterlingQuestDB.sessions[i] = sess return end
+    for i, session in ipairs(SterlingQuestDB.sessions) do
+        if session.id == sess.id then SterlingQuestDB.sessions[i] = sess return end
     end
 
     table.insert(SterlingQuestDB.sessions, 1, sess)
 end
 
+-- A saved session by id or name
 function S.FindSession(key)
     if not key then return nil end
 
-    for _, s in ipairs(SterlingQuestDB.sessions) do if s.id == key then return s end end
+    for _, session in ipairs(SterlingQuestDB.sessions) do if session.id == key then return session end end
 
     key = tostring(key):lower()
 
-    for _, s in ipairs(SterlingQuestDB.sessions) do if (s.name or ""):lower() == key then return s end end
+    for _, session in ipairs(SterlingQuestDB.sessions) do if (session.name or ""):lower() == key then return session end end
 
     local n = tonumber(key)
 
     if n then return SterlingQuestDB.sessions[n] end
 end
 
+-- Deletes a session (to the trash, unless that's switched off)
 function S.DeleteSession(sess)
-    for i, s in ipairs(SterlingQuestDB.sessions) do
-        if s == sess or s.id == sess.id then
+    for i, session in ipairs(SterlingQuestDB.sessions) do
+        if session == sess or session.id == sess.id then
             table.remove(SterlingQuestDB.sessions, i)
 
-            if not S.Opt("noTrash", false) then S.Trash(s) end
+            if not S.Opt("noTrash", false) then S.Trash(session) end
             if SterlingQuestDB.following == sess.id then S.StopFollowing() end
 
             return
@@ -697,18 +715,19 @@ function S.DeleteSession(sess)
     end
 end
 
+-- Joins two sessions into one, in time order
 function S.MergeSessions(a, b)
     if a.start > b.start then a, b = b, a end
 
     local m = { name = a.name .. " + " .. b.name, char = a.char, realm = a.realm, start = a.start, stop = math.max(a.stop or 0, b.stop or 0),
                 lvl0 = a.lvl0, lvl1 = b.lvl1 or a.lvl1, imported = a.imported or b.imported, events = {}, trail = {}, zones = {} }
-    for _, e in ipairs(a.events) do m.events[#m.events + 1] = e end
-    for _, e in ipairs(b.events) do m.events[#m.events + 1] = e end
+    for _, event in ipairs(a.events) do m.events[#m.events + 1] = event end
+    for _, event in ipairs(b.events) do m.events[#m.events + 1] = event end
 
     table.sort(m.events, function(x, y) return x.t < y.t end)
 
-    for _, p in ipairs(a.trail) do m.trail[#m.trail + 1] = p end
-    for _, p in ipairs(b.trail) do m.trail[#m.trail + 1] = p end
+    for _, point in ipairs(a.trail) do m.trail[#m.trail + 1] = point end
+    for _, point in ipairs(b.trail) do m.trail[#m.trail + 1] = point end
 
     table.sort(m.trail, function(x, y) return x.t < y.t end)
 
@@ -725,24 +744,25 @@ end
 -- Compare two sessions by quest IDs: what "theirs" did that "mine" didn't (extra), what mine did that
 -- theirs didn't (missed), and what both did (same). Dungeon runs and levels are compared too.
 function S.DiffSessions(theirs, mine)
+    -- Counts and lists what happened in a session, for its summary
     local function scan(sess)
         local q, dung, order = {}, {}, {}
 
-        for _, e in ipairs(sess.events) do
-            if e.q then
-                local r = q[e.q]
+        for _, event in ipairs(sess.events) do
+            if event.q then
+                local r = q[event.q]
 
-                if not r then r = { qid = e.q, name = nil }; q[e.q] = r; order[#order + 1] = e.q end
-                if e.quest and not e.quest:find("^Quest #") then r.name = e.quest end
-                if e.k == "A" then r.picked = r.picked or e; r.status = "picked"
-                elseif e.k == "T" then r.done = e; r.status = "done"
-                elseif e.k == "N" and e.text and (e.text:find("^Skipped") or e.text:find("^Abandoned")) then r.status = r.status ~= "done" and "skipped" or r.status; r.skip = e
-                    if not r.name then r.name = e.text:match("^%a+ (.+)$") end
+                if not r then r = { qid = event.q, name = nil }; q[event.q] = r; order[#order + 1] = event.q end
+                if event.quest and not event.quest:find("^Quest #") then r.name = event.quest end
+                if event.k == "A" then r.picked = r.picked or event; r.status = "picked"
+                elseif event.k == "T" then r.done = event; r.status = "done"
+                elseif event.k == "N" and event.text and (event.text:find("^Skipped") or event.text:find("^Abandoned")) then r.status = r.status ~= "done" and "skipped" or r.status; r.skip = event
+                    if not r.name then r.name = event.text:match("^%a+ (.+)$") end
                 end
-            elseif e.k == "D" and e.text then
-                dung[e.text] = dung[e.text] or { name = e.text, runs = {} }
+            elseif event.k == "D" and event.text then
+                dung[event.text] = dung[event.text] or { name = event.text, runs = {} }
 
-                table.insert(dung[e.text].runs, e)
+                table.insert(dung[event.text].runs, event)
             end
         end
 
@@ -809,6 +829,7 @@ end
 ---------------------------------------------------------------------------
 S.PACK_AFTER = 30 * 86400
 
+-- A number as short text for the session string
 local function numStr(v)
     if v % 1 == 0 and v > -1e15 and v < 1e15 then return ("%.0f"):format(v) end
 
@@ -843,6 +864,7 @@ local function ser(v, out)
     else out[#out + 1] = "Z" end
 end
 
+-- Reads one value back from a serialized table, and where the next one starts
 local function de(str, i)
     local c = str:sub(i, i)
 
@@ -884,16 +906,17 @@ end
 function S.Serialize(v) local out = {}; ser(v, out); return table.concat(out) end
 function S.Deserialize(str) local v = de(str, 1); return v end
 
+-- How many turn-ins, pick-ups, flights, deaths... a session has
 function S.SessionCounts(sess)
     if S.IsPacked(sess) and type(rawget(sess, "sum")) == "table" then return sess.sum end
 
     local c = { turnin = 0, pickup = 0, skip = 0, dungeon = 0, flight = 0, death = 0, ding = 0, ev = 0, tr = 0 }
 
-    for _, e in ipairs(sess.events or {}) do
-        if e.k == "T" then c.turnin = c.turnin + 1 elseif e.k == "A" then c.pickup = c.pickup + 1
-        elseif e.k == "D" then c.dungeon = c.dungeon + 1 elseif e.k == "F" then c.flight = c.flight + 1
-        elseif e.k == "K" then c.death = c.death + 1 elseif e.k == "L" then c.ding = c.ding + 1
-        elseif e.k == "N" and e.text and (e.text:find("^Skipped") or e.text:find("^Abandoned")) then c.skip = c.skip + 1 end
+    for _, event in ipairs(sess.events or {}) do
+        if event.k == "T" then c.turnin = c.turnin + 1 elseif event.k == "A" then c.pickup = c.pickup + 1
+        elseif event.k == "D" then c.dungeon = c.dungeon + 1 elseif event.k == "F" then c.flight = c.flight + 1
+        elseif event.k == "K" then c.death = c.death + 1 elseif event.k == "L" then c.ding = c.ding + 1
+        elseif event.k == "N" and event.text and (event.text:find("^Skipped") or event.text:find("^Abandoned")) then c.skip = c.skip + 1 end
     end
 
     c.ev, c.tr = #(sess.events or {}), #(sess.trail or {})
@@ -910,16 +933,18 @@ local lazy = { __index = function(t, k)
 end }
 
 local function shape(sess) return #(rawget(sess, "events") or {}) .. ":" .. #(rawget(sess, "trail") or {}) end
-function S.UnpackSession(sess)
-    local z = rawget(sess, "pk")
 
-    if not z or rawget(sess, "events") then return true end
+-- Unpacks an old packed session the first time it's read
+function S.UnpackSession(sess)
+    local zone = rawget(sess, "pk")
+
+    if not zone or rawget(sess, "events") then return true end
 
     local lib = S.LibDeflate and S.LibDeflate()
     local data
 
     if lib then
-        local ok, raw = pcall(function() return lib:DecompressDeflate(lib:DecodeForPrint(z)) end)
+        local ok, raw = pcall(function() return lib:DecompressDeflate(lib:DecodeForPrint(zone)) end)
 
         if ok and type(raw) == "string" then local ok2, t = pcall(S.Deserialize, raw); if ok2 and type(t) == "table" then data = t end end
     end
@@ -957,12 +982,12 @@ function S.PackSession(sess)
 
     if not okS then return false end
 
-    local okZ, z = pcall(function() return lib:EncodeForPrint(lib:CompressDeflate(raw, { level = 3 })) end)
+    local okZ, zone = pcall(function() return lib:EncodeForPrint(lib:CompressDeflate(raw, { level = 3 })) end)
 
-    if not okZ or type(z) ~= "string" or z == "" then return false end
+    if not okZ or type(zone) ~= "string" or zone == "" then return false end
 
     -- prove it reads back exactly before letting go of the tables
-    local okB, back = pcall(function() return lib:DecompressDeflate(lib:DecodeForPrint(z)) end)
+    local okB, back = pcall(function() return lib:DecompressDeflate(lib:DecodeForPrint(zone)) end)
 
     if not okB or back ~= raw then return false end
 
@@ -972,9 +997,9 @@ function S.PackSession(sess)
 
     local sum = S.SessionCounts(sess)
 
-    sum.raw, sum.z = #raw, #z
+    sum.raw, sum.z = #raw, #zone
 
-    rawset(sess, "sum", sum); rawset(sess, "pk", z); rawset(sess, "pkv", 1)
+    rawset(sess, "sum", sum); rawset(sess, "pk", zone); rawset(sess, "pkv", 1)
     rawset(sess, "events", nil); rawset(sess, "trail", nil)
 
     opened[sess] = nil
@@ -996,6 +1021,7 @@ function S.PackStats()
     return n, before, after, waiting
 end
 
+-- Is a session old and big enough to pack, and not in use?
 function S.PackDue(sess)
     if type(sess) ~= "table" or rawget(sess, "pk") or rawget(sess, "pkSkip") or type(rawget(sess, "events")) ~= "table" then return false end
     if SterlingQuestDB.following == sess.id or sess == rec then return false end
@@ -1008,6 +1034,7 @@ end
 -- One session at a time, a few seconds apart, never in combat: packing a long session takes a moment.
 local packing = false
 
+-- Packs one old session, then waits before the next
 local function packStep()
     packing = false
 
@@ -1027,12 +1054,14 @@ local function packStep()
     end
 end
 
+-- Starts packing old sessions after a delay
 function S.PackSoon(delay)
     if packing then return end
 
     packing = true; C_Timer.After(delay or 30, packStep)
 end
 
+-- Sets up packing at login: packed sessions unpack themselves when read
 function S.PackInit()
     for _, list in ipairs({ SterlingQuestDB.sessions or {}, SterlingQuestDB.trash or {} }) do
         for _, sess in ipairs(list) do
@@ -1079,6 +1108,7 @@ function S.UnpackAll()
     return n
 end
 
+-- One line about a session: zones, length, quests done
 function S.SessionSummary(sess)
     local zones = {}
 
@@ -1099,22 +1129,23 @@ end
 ---------------------------------------------------------------------------
 local function enc(v) return v == nil and "" or tostring(v) end
 
+-- A session as a string to paste to a friend
 function S.EncodeSession(sess)
     local ev = {}
 
-    for _, e in ipairs(sess.events) do
-        ev[#ev + 1] = table.concat({ e.t - sess.start, e.k, enc(e.q), enc(e.map), enc(e.x), enc(e.y), safe(e.quest), safe(e.npc), safe(e.text, 200), enc(e.lvl or e.dur), safe(e.from),
-                                     enc(e.fmap), enc(e.fx), enc(e.fy) }, ":")
+    for _, event in ipairs(sess.events) do
+        ev[#ev + 1] = table.concat({ event.t - sess.start, event.k, enc(event.q), enc(event.map), enc(event.x), enc(event.y), safe(event.quest), safe(event.npc), safe(event.text, 200), enc(event.lvl or event.dur), safe(event.from),
+                                     enc(event.fmap), enc(event.fx), enc(event.fy) }, ":")
     end
 
-    local tr, lastMap, lastT = {}, nil, sess.start
+    local trail, lastMap, lastT = {}, nil, sess.start
 
-    for _, p in ipairs(sess.trail) do
-        if p.map ~= lastMap then tr[#tr + 1] = "m" .. p.map; lastMap = p.map end
-        if p.brk then tr[#tr + 1] = "b" end
+    for _, point in ipairs(sess.trail) do
+        if point.map ~= lastMap then trail[#trail + 1] = "m" .. point.map; lastMap = point.map end
+        if point.brk then trail[#trail + 1] = "b" end
 
-        tr[#tr + 1] = (p.t - lastT) .. "," .. p.x .. "," .. p.y
-        lastT = p.t
+        trail[#trail + 1] = (point.t - lastT) .. "," .. point.x .. "," .. point.y
+        lastT = point.t
     end
 
     local zones = {}
@@ -1122,10 +1153,11 @@ function S.EncodeSession(sess)
     for z in pairs(sess.zones or {}) do zones[#zones + 1] = safe(z) end
 
     return table.concat({ "SES1", safe(sess.name), safe(sess.char), safe(sess.realm), sess.start, sess.stop or time(),
-                          enc(sess.lvl0), enc(sess.lvl1), table.concat(zones, ","), table.concat(ev, ";"), table.concat(tr, ";"),
+                          enc(sess.lvl0), enc(sess.lvl1), table.concat(zones, ","), table.concat(ev, ";"), table.concat(trail, ";"),
                           sess.race or "", sess.color or "", safe(sess.display or ""), safe(sess.note or "", 200) }, "^")
 end
 
+-- A pasted session string back into a session
 function S.DecodeSession(str)
     str = str:gsub("[\r\n]", "")
 
@@ -1152,16 +1184,16 @@ function S.DecodeSession(str)
         local dt, k = tonumber(p[1]), p[2]
 
         if dt and k then
-            local e = { t = sess.start + dt, k = k, q = tonumber(p[3]), map = tonumber(p[4]), x = tonumber(p[5]), y = tonumber(p[6]) }
+            local event = { t = sess.start + dt, k = k, q = tonumber(p[3]), map = tonumber(p[4]), x = tonumber(p[5]), y = tonumber(p[6]) }
 
-            if p[7] ~= "" then e.quest = p[7] end
-            if p[8] ~= "" then e.npc = p[8] end
-            if p[9] ~= "" then e.text = p[9] end
-            if k == "L" then e.lvl = tonumber(p[10]) elseif k == "D" then e.dur = tonumber(p[10]) end
-            if p[11] and p[11] ~= "" then e.from = p[11] end
-            if p[12] and p[12] ~= "" then e.fmap, e.fx, e.fy = tonumber(p[12]), tonumber(p[13]), tonumber(p[14]) end
+            if p[7] ~= "" then event.quest = p[7] end
+            if p[8] ~= "" then event.npc = p[8] end
+            if p[9] ~= "" then event.text = p[9] end
+            if k == "L" then event.lvl = tonumber(p[10]) elseif k == "D" then event.dur = tonumber(p[10]) end
+            if p[11] and p[11] ~= "" then event.from = p[11] end
+            if p[12] and p[12] ~= "" then event.fmap, event.fx, event.fy = tonumber(p[12]), tonumber(p[13]), tonumber(p[14]) end
 
-            sess.events[#sess.events + 1] = e
+            sess.events[#sess.events + 1] = event
         end
     end
 
@@ -1191,10 +1223,11 @@ function S.SessionToLegs(sess)
     local myLevel = UnitLevel("player") or 0
     local abandoned = {}
 
-    for _, e in ipairs(sess.events) do if e.k == "X" then abandoned[e.q] = true end end
+    for _, event in ipairs(sess.events) do if event.k == "X" then abandoned[event.q] = true end end
 
     local legs, leg = {}, nil
 
+    -- Starts a new leg of the path (a new zone or a break in the session)
     local function newLeg(title, t)
         if leg and #leg.steps == 0 then legs[#legs] = nil end
 
@@ -1206,53 +1239,53 @@ function S.SessionToLegs(sess)
 
     local lastMap
 
-    for _, e in ipairs(sess.events) do
-        local st
+    for _, event in ipairs(sess.events) do
+        local step
 
-        if e.k == "A" and not abandoned[e.q] then st = { kind = "pickup", qid = e.q, quest = e.quest, npc = e.npc }
-        elseif e.k == "T" then st = { kind = "turnin", qid = e.q, quest = e.quest, npc = e.npc }
-        elseif e.k == "O" and not abandoned[e.q] then st = { kind = "objective", qid = e.q, quest = e.quest, text = (e.text and e.text:find("%S")) and e.text or nil }
-        elseif e.k == "L" then if e.lvl and e.lvl > myLevel then st = { kind = "ding", level = e.lvl, quest = "Level " .. e.lvl } end
-        elseif e.k == "Z" then
-            newLeg(e.text, e.t)
+        if event.k == "A" and not abandoned[event.q] then step = { kind = "pickup", qid = event.q, quest = event.quest, npc = event.npc }
+        elseif event.k == "T" then step = { kind = "turnin", qid = event.q, quest = event.quest, npc = event.npc }
+        elseif event.k == "O" and not abandoned[event.q] then step = { kind = "objective", qid = event.q, quest = event.quest, text = (event.text and event.text:find("%S")) and event.text or nil }
+        elseif event.k == "L" then if event.lvl and event.lvl > myLevel then step = { kind = "ding", level = event.lvl, quest = "Level " .. event.lvl } end
+        elseif event.k == "Z" then
+            newLeg(event.text, event.t)
 
-            st = { kind = "travel", text = e.text, subzone = e.text }
-        elseif e.k == "F" then st = { kind = "flight", text = e.text, subzone = e.text, from = e.from, fmap = e.fmap, fx = e.fx, fy = e.fy }; newLeg(e.text, e.t)
-        elseif e.k == "B" then st = { kind = "ride", text = e.text, subzone = e.text, from = e.from, fmap = e.fmap, fx = e.fx, fy = e.fy }; newLeg(e.text, e.t)
-        elseif e.k == "H" then st = { kind = "hearth", text = e.text, subzone = e.text, from = e.from }; newLeg(e.text, e.t)
-        elseif e.k == "D" then st = { kind = "dungeon", text = e.text, dur = e.dur }
-        elseif e.k == "N" then st = { kind = "note", text = e.text }
+            step = { kind = "travel", text = event.text, subzone = event.text }
+        elseif event.k == "F" then step = { kind = "flight", text = event.text, subzone = event.text, from = event.from, fmap = event.fmap, fx = event.fx, fy = event.fy }; newLeg(event.text, event.t)
+        elseif event.k == "B" then step = { kind = "ride", text = event.text, subzone = event.text, from = event.from, fmap = event.fmap, fx = event.fx, fy = event.fy }; newLeg(event.text, event.t)
+        elseif event.k == "H" then step = { kind = "hearth", text = event.text, subzone = event.text, from = event.from }; newLeg(event.text, event.t)
+        elseif event.k == "D" then step = { kind = "dungeon", text = event.text, dur = event.dur }
+        elseif event.k == "N" then step = { kind = "note", text = event.text }
         end
 
-        if st then
-            st.t = e.t
+        if step then
+            step.t = event.t
 
-            if e.map and e.x then st.map, st.x, st.y = e.map, e.x, e.y end
+            if event.map and event.x then step.map, step.x, step.y = event.map, event.x, event.y end
 
             -- travel steps keep the arrival as the destination and point the arrow at where to catch it
-            if st.kind == "flight" or st.kind == "ride" or st.kind == "hearth" then
-                st.dmap, st.dx, st.dy = st.map, st.x, st.y
+            if step.kind == "flight" or step.kind == "ride" or step.kind == "hearth" then
+                step.dmap, step.dx, step.dy = step.map, step.x, step.y
 
-                if st.fmap and st.fx then st.map, st.x, st.y = st.fmap, st.fx, st.fy end
+                if step.fmap and step.fx then step.map, step.x, step.y = step.fmap, step.fx, step.fy end
             end
 
-            if st.kind ~= "travel" and e.map and e.map ~= lastMap and lastMap then
+            if step.kind ~= "travel" and event.map and event.map ~= lastMap and lastMap then
                 -- zone changed without a named arrival: still start a new leg
-                newLeg(S.MapName(e.map), e.t)
+                newLeg(S.MapName(event.map), event.t)
             end
 
-            if e.map then lastMap = e.map end
+            if event.map then lastMap = event.map end
 
             -- Skip quest steps you've already done.
             local skip = false
 
-            if st.qid then
-                if st.kind == "turnin" and S.IsFlaggedDone(st.qid) then skip = true end
-                if st.kind == "pickup" and (S.log[st.qid] or S.IsFlaggedDone(st.qid)) then skip = true end
-                if st.kind == "objective" and S.IsFlaggedDone(st.qid) then skip = true end
+            if step.qid then
+                if step.kind == "turnin" and S.IsFlaggedDone(step.qid) then skip = true end
+                if step.kind == "pickup" and (S.log[step.qid] or S.IsFlaggedDone(step.qid)) then skip = true end
+                if step.kind == "objective" and S.IsFlaggedDone(step.qid) then skip = true end
             end
 
-            if not skip then leg.steps[#leg.steps + 1] = st end
+            if not skip then leg.steps[#leg.steps + 1] = step end
         end
     end
 
@@ -1260,21 +1293,22 @@ function S.SessionToLegs(sess)
 
     -- Legs that only say "arrived somewhere" are noise. Flights, boats, zeppelins and hearths are real
     -- instructions (that's how they got there), so they always stay.
-    for _, l in ipairs(legs) do
+    for _, leg in ipairs(legs) do
         local real = false
 
-        for _, s in ipairs(l.steps) do if s.kind ~= "travel" then real = true break end end
+        for _, step in ipairs(leg.steps) do if step.kind ~= "travel" then real = true break end end
 
-        if not real then l.steps = {} end
+        if not real then leg.steps = {} end
     end
 
     local cleaned = {}
 
-    for _, l in ipairs(legs) do if #l.steps > 0 then l.n = #cleaned + 1; cleaned[#cleaned + 1] = l end end
+    for _, leg in ipairs(legs) do if #leg.steps > 0 then leg.n = #cleaned + 1; cleaned[#cleaned + 1] = leg end end
 
     return cleaned
 end
 
+-- Follows a session: its steps become your path
 function S.FollowSession(sess, announce)
     if not sess then return end
 
@@ -1290,6 +1324,7 @@ function S.FollowSession(sess, announce)
     if announce then msg(("Following \"%s\": %d steps left."):format(sess.name, #S.steps)) end
 end
 
+-- Stops following anything
 function S.StopFollowing()
     SterlingQuestDB.following = nil
 
@@ -1313,9 +1348,9 @@ function S.TrailDistance()
 
     local best
 
-    for _, p in ipairs(sess.trail) do
-        if p.map == map then
-            local d = (p.x - x) ^ 2 + (p.y - y) ^ 2
+    for _, point in ipairs(sess.trail) do
+        if point.map == map then
+            local d = (point.x - x) ^ 2 + (point.y - y) ^ 2
 
             if not best or d < best then best = d end
         end

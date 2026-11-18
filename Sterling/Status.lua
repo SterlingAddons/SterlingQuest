@@ -38,12 +38,14 @@ end
 
 S.CopyLook = copyLook
 
+-- One of the quest log status looks by key
 local function presetLook(key)
     for _, l in ipairs(S.TIP_LOOKS) do if l[1] == key then return l end end
 
     return nil
 end
 
+-- The look the quest log status uses (a preset or your custom one)
 local function tipLook()
     local key = S.Opt("tipLook", "warm")
 
@@ -87,6 +89,7 @@ local function display(name)
     return n:match("^(%S+)") or n
 end
 
+-- Is this person in your group?
 local function inMyGroup(name)
     local n = short(name)
 
@@ -99,11 +102,11 @@ local function knownSnaps()
     local groupOnly = S.Opt("statusGroupOnly", false)
     local me = UnitName("player")
 
-    for _, p in ipairs(S.Partners and S.Partners() or {}) do
-        local sn = S.snaps and S.snaps[p.name]
+    for _, partner in ipairs(S.Partners and S.Partners() or {}) do
+        local snap = S.snaps and S.snaps[partner.name]
 
-        if type(sn) == "table" and type(sn.log) == "table" and p.name ~= me and not (S.IsMe and S.IsMe(p.name)) and p.show ~= false and (not groupOnly or inMyGroup(p.name)) then
-            out[#out + 1] = { name = p.name, sn = sn }
+        if type(snap) == "table" and type(snap.log) == "table" and partner.name ~= me and not (S.IsMe and S.IsMe(partner.name)) and partner.show ~= false and (not groupOnly or inMyGroup(partner.name)) then
+            out[#out + 1] = { name = partner.name, sn = snap }
         end
     end
 
@@ -112,11 +115,12 @@ local function knownSnaps()
     return out
 end
 
-local function progress(q)
+-- "3/8" progress for a partner's quest, from its objectives
+local function progress(quest)
     local done, total, a1, b1 = 0, 0, nil, nil
 
-    for _, t in ipairs(q.objs or {}) do
-        local a, b = tostring(t):match("(%d+)%s*/%s*(%d+)")
+    for _, objective in ipairs(quest.objs or {}) do
+        local a, b = tostring(objective):match("(%d+)%s*/%s*(%d+)")
 
         if a then
             a, b = tonumber(a), tonumber(b)
@@ -139,11 +143,11 @@ function S.QuestPartnerStatus(qid)
     local list = {}
 
     for _, p in ipairs(knownSnaps()) do
-        local sn, st, extra = p.sn, "none", nil
+        local snap, st, extra = p.sn, "none", nil
 
-        if sn.completed and sn.completed[qid] then st = "done"
-        elseif sn.log[qid] then
-            if sn.log[qid].complete then st = "ready" else st = "log"; if S.Opt("statusProgress", true) then extra = progress(sn.log[qid]) end end
+        if snap.completed and snap.completed[qid] then st = "done"
+        elseif snap.log[qid] then
+            if snap.log[qid].complete then st = "ready" else st = "log"; if S.Opt("statusProgress", true) then extra = progress(snap.log[qid]) end end
         end
 
         list[#list + 1] = { name = display(p.name), state = st, extra = extra }
@@ -170,12 +174,13 @@ end
 -- we don't know (Questie DB first, then the game), a batch at a time, once each.
 local tried = {}
 
+-- Names for quests partners finished, a few at a time so tooltips stay fast
 local function resolvePartnerNames(budget)
     local saved = SterlingQuestDB and SterlingQuestDB.names or {}
 
-    for _, sn in pairs(S.snaps or {}) do
-        if type(sn) == "table" then
-            for _, set in ipairs({ sn.completed or {}, sn.log or {} }) do
+    for _, snap in pairs(S.snaps or {}) do
+        if type(snap) == "table" then
+            for _, set in ipairs({ snap.completed or {}, snap.log or {} }) do
                 for qid in pairs(set) do
                     if not tried[qid] then
                         tried[qid] = true
@@ -202,6 +207,7 @@ S.ResolvePartnerNames = resolvePartnerNames
 
 local index, indexAt = {}, -100
 
+-- Which quest a line of tooltip text is (by its title)
 local function lookup(text)
     local now = GetTime()
 
@@ -212,9 +218,9 @@ local function lookup(text)
 
         for qid, title in pairs(SterlingQuestDB and SterlingQuestDB.names or {}) do index[norm(title)] = qid end
         for qid, title in pairs(S.names or {}) do index[norm(title)] = qid end
-        for qid, q in pairs(S.log or {}) do if q.title then index[norm(q.title)] = qid end end
-        for _, sn in pairs(S.snaps or {}) do
-            if type(sn) == "table" and sn.log then for qid, q in pairs(sn.log) do if q.title and q.title ~= "" then index[norm(q.title)] = index[norm(q.title)] or qid end end end
+        for qid, quest in pairs(S.log or {}) do if quest.title then index[norm(quest.title)] = qid end end
+        for _, snap in pairs(S.snaps or {}) do
+            if type(snap) == "table" and snap.log then for qid, quest in pairs(snap.log) do if quest.title and quest.title ~= "" then index[norm(quest.title)] = index[norm(quest.title)] or qid end end end
         end
     end
 
@@ -344,18 +350,20 @@ local function isProgress(text)
     return plain:match("^%s") ~= nil or plain:match("%d+%s*/%s*%d+") ~= nil or plain:match("^%s*%-") ~= nil
 end
 
+-- The text and font string of one tooltip line
 local function textOf(name, i)
-    local fs = _G[name .. "TextLeft" .. i]
+    local label = _G[name .. "TextLeft" .. i]
 
-    if not fs then return nil, nil end
+    if not label then return nil, nil end
 
-    local ok, t = pcall(fs.GetText, fs)
+    local ok, t = pcall(label.GetText, label)
 
-    if not ok or type(t) ~= "string" or (issecretvalue and issecretvalue(t)) then return nil, fs end
+    if not ok or type(t) ~= "string" or (issecretvalue and issecretvalue(t)) then return nil, label end
 
-    return t, fs
+    return t, label
 end
 
+-- Adds partner status under each quest title in a tooltip
 local function decorate(tt)
     if busy or not tt or not S.Opt("tipStatus", true) then return end
     if not next(S.snaps or {}) or not tt.IsShown or not tt:IsShown() then return end
@@ -471,7 +479,7 @@ local function decorate(tt)
 
             S.Debug("tooltip", name .. " (" .. kind .. ") \"" .. head .. "\": " .. (#report > 0 and "" or "no quest lines found"))
 
-            for _, r in ipairs(report) do S.Debug("tooltip", "   " .. r) end
+            for _, line in ipairs(report) do S.Debug("tooltip", "   " .. line) end
         end
     end
 
@@ -485,6 +493,7 @@ end
 -- own tooltip code.
 local decorateRaw = decorate
 
+-- Same, but an error can never leave the tooltip hook broken
 decorate = function(tt)
     if busy then return end
 
@@ -495,6 +504,7 @@ end
 
 S.DecorateTooltip = decorate
 
+-- Hooks every tooltip that can show quests (mobs, Questie pins, items)
 local function hookTooltips()
     if not GameTooltip then return end
 
@@ -540,6 +550,7 @@ function S.LogStyleName(key) for _, s in ipairs(S.LOG_STYLES) do if s[1] == key 
 local function logStyle() return S.Opt("logStyle", "tooltip") end
 local function parchment(style) return style == "section" or style == "plain" end
 
+-- The quest shown in the NPC quest window or the quest log, if any
 local function selectedQuest()
     -- the NPC quest window (accept / progress / turn in) shows one quest; GetQuestID names it
     if type(QuestFrame) == "table" and QuestFrame.IsShown and QuestFrame:IsShown() and type(GetQuestID) == "function" then
@@ -579,6 +590,7 @@ local function perPartner(list)
     return out
 end
 
+-- The status text for one quest, in the chosen style
 local function listText(list, style)
     if parchment(style) then return table.concat(perPartner(list), "\n") end
 
@@ -610,12 +622,14 @@ local function objectivesAnchor()
     return nil
 end
 
-local function setFont(fs, objName, fallback)
-    if not pcall(fs.SetFontObject, fs, objName) then pcall(fs.SetFontObject, fs, fallback) end
+-- Sets a font, falling back when the first one doesn't exist
+local function setFont(label, objName, fallback)
+    if not pcall(label.SetFontObject, label, objName) then pcall(label.SetFontObject, label, fallback) end
 end
 
+-- Applies the chosen look (box, side line, text colour) to the status block
 local function applyStyle(block, style)
-    local fs = block.fs
+    local label = block.fs
 
     style = style or logStyle()
 
@@ -623,24 +637,24 @@ local function applyStyle(block, style)
 
     if parchment(style) then
         -- the quest window's own fonts: QuestTitleFont for the heading, QuestFont for the lines
-        setFont(fs, S.Opt("logFont", "normal") == "normal" and "QuestFont" or "QuestFontNormalSmall", "GameFontHighlight")
+        setFont(label, S.Opt("logFont", "normal") == "normal" and "QuestFont" or "QuestFontNormalSmall", "GameFontHighlight")
 
-        if not (fs.GetFont and select(2, pcall(fs.GetFont, fs))) then setFont(fs, "QuestFont", "GameFontHighlight") end
+        if not (label.GetFont and select(2, pcall(label.GetFont, label))) then setFont(label, "QuestFont", "GameFontHighlight") end
 
-        pcall(fs.SetShadowOffset, fs, 0, 0)
+        pcall(label.SetShadowOffset, label, 0, 0)
 
         if block.SetBackdrop then block:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 }) end
 
         block:SetBackdropColor(0, 0, 0, 0); block:SetBackdropBorderColor(0, 0, 0, 0)
-        fs:ClearAllPoints()
+        label:ClearAllPoints()
 
         if style == "section" then
             setFont(block.head, "QuestTitleFont", "GameFontNormalLarge")
             block.head:SetTextColor(.18, .11, .03); pcall(block.head.SetShadowOffset, block.head, 0, 0)
             block.head:SetText("Party progress:"); block.head:ClearAllPoints(); block.head:SetPoint("TOPLEFT", 0, 0); block.head:Show()
-            fs:SetPoint("TOPLEFT", block.head, "BOTTOMLEFT", 0, -4)
+            label:SetPoint("TOPLEFT", block.head, "BOTTOMLEFT", 0, -4)
         else
-            fs:SetPoint("TOPLEFT", 0, 0)
+            label:SetPoint("TOPLEFT", 0, 0)
         end
 
         block.pad, block.padX = 0, 0
@@ -670,10 +684,10 @@ local function applyStyle(block, style)
         end
 
         if look.rule then
-            local c = look.ruleColor or { .8, .52, .1, 1 }
+            local color = look.ruleColor or { .8, .52, .1, 1 }
             local inset = box and 5 or 0
 
-            block.rule:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+            block.rule:SetColorTexture(color[1], color[2], color[3], color[4] or 1)
             block.rule:SetWidth(3)
             block.rule:ClearAllPoints()
             block.rule:SetPoint("TOPLEFT", inset, -inset)
@@ -682,19 +696,19 @@ local function applyStyle(block, style)
         end
 
         if look.dark then
-            setFont(fs, S.Opt("logFont", "normal") == "normal" and "QuestFont" or "QuestFontNormalSmall", "GameFontHighlight")
-            pcall(fs.SetShadowOffset, fs, 0, 0)
+            setFont(label, S.Opt("logFont", "normal") == "normal" and "QuestFont" or "QuestFontNormalSmall", "GameFontHighlight")
+            pcall(label.SetShadowOffset, label, 0, 0)
         else
-            pcall(fs.SetFontObject, fs, S.Opt("logFont", "normal") == "normal" and GameFontHighlight or GameFontHighlightSmall)
-            pcall(fs.SetShadowOffset, fs, 1, -1); pcall(fs.SetShadowColor, fs, 0, 0, 0, 1)
+            pcall(label.SetFontObject, label, S.Opt("logFont", "normal") == "normal" and GameFontHighlight or GameFontHighlightSmall)
+            pcall(label.SetShadowOffset, label, 1, -1); pcall(label.SetShadowColor, label, 0, 0, 0, 1)
         end
 
-        fs:ClearAllPoints()
+        label:ClearAllPoints()
 
         if box then
-            fs:SetPoint("TOPLEFT", look.rule and 14 or 8, -6); block.pad, block.padX = 12, look.rule and 22 or 16
+            label:SetPoint("TOPLEFT", look.rule and 14 or 8, -6); block.pad, block.padX = 12, look.rule and 22 or 16
         else
-            fs:SetPoint("TOPLEFT", look.rule and 10 or 0, -3); block.pad, block.padX = 6, look.rule and 12 or 2
+            label:SetPoint("TOPLEFT", look.rule and 10 or 0, -3); block.pad, block.padX = 6, look.rule and 12 or 2
         end
 
         return
@@ -706,20 +720,20 @@ local function applyStyle(block, style)
     local base = S.Opt("logFont", "normal") == "normal" and GameFontHighlight or GameFontHighlightSmall
     local flag = (style == "thick" and "THICKOUTLINE") or (style == "thin" and "OUTLINE") or ""
 
-    pcall(fs.SetFontObject, fs, base)
+    pcall(label.SetFontObject, label, base)
 
-    local ok, file, size = pcall(fs.GetFont, fs)
+    local ok, file, size = pcall(label.GetFont, label)
 
-    if ok and file then pcall(fs.SetFont, fs, file, size, flag) end
-    if style == "thin" or style == "thick" then pcall(fs.SetShadowOffset, fs, 0, 0) else pcall(fs.SetShadowOffset, fs, 1, -1); pcall(fs.SetShadowColor, fs, 0, 0, 0, style == "ink" and 0 or .8) end
+    if ok and file then pcall(label.SetFont, label, file, size, flag) end
+    if style == "thin" or style == "thick" then pcall(label.SetShadowOffset, label, 0, 0) else pcall(label.SetShadowOffset, label, 1, -1); pcall(label.SetShadowColor, label, 0, 0, 0, style == "ink" and 0 or .8) end
     if style == "bar" then
         block:SetBackdropColor(.08, .1, .18, .82); block:SetBackdropBorderColor(.2, .24, .36, .9)
-        fs:ClearAllPoints(); fs:SetPoint("TOPLEFT", 6, -4)
+        label:ClearAllPoints(); label:SetPoint("TOPLEFT", 6, -4)
 
         block.pad, block.padX = 8, 12
     else
         block:SetBackdropColor(0, 0, 0, 0); block:SetBackdropBorderColor(0, 0, 0, 0)
-        fs:ClearAllPoints(); fs:SetPoint("TOPLEFT", 0, 0)
+        label:ClearAllPoints(); label:SetPoint("TOPLEFT", 0, 0)
 
         block.pad, block.padX = 0, 0
     end
@@ -737,6 +751,7 @@ local function stillOnBlock(r, block)
     return false
 end
 
+-- Puts back the quest log pieces we moved to make room
 local function restoreMoved(block)
     for _, m in ipairs(block.moved or {}) do
         if stillOnBlock(m.r, block) then
@@ -754,16 +769,18 @@ end
 -- A sample block for the Options preview, drawn exactly like the quest log one.
 local SAMPLE = { { name = "Bran", state = "done" }, { name = "Tovak", state = "ready" },
                  { name = "Grukk", state = "log", extra = "2/5" }, { name = "Zal", state = "none" } }
+-- The live preview in Options, drawn by the same code as the real block
 function S.StatusSample(parent)
-    local b = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    local frame = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate" or nil)
 
-    b.fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"); b.fs:SetJustifyH("LEFT"); b.fs:SetSpacing(2)
-    b.head = b:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); b.head:SetJustifyH("LEFT")
+    frame.fs = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"); frame.fs:SetJustifyH("LEFT"); frame.fs:SetSpacing(2)
+    frame.head = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge"); frame.head:SetJustifyH("LEFT")
 
-    function b.Render(maxW)
+    -- Redraws the preview at a width
+    function frame.Render(maxW)
         local style = logStyle()
 
-        applyStyle(b, style)
+        applyStyle(frame, style)
 
         local list = {}
 
@@ -773,35 +790,36 @@ function S.StatusSample(parent)
 
         local txt = listText(list, style)
 
-        b.fs:SetWidth(0); b.fs:SetText(txt)
+        frame.fs:SetWidth(0); frame.fs:SetText(txt)
 
-        local need = (b.fs:GetStringWidth() or 100) + b.padX
+        local need = (frame.fs:GetStringWidth() or 100) + frame.padX
 
-        if style == "section" then need = math.max(need, (b.head:GetStringWidth() or 0)) end
+        if style == "section" then need = math.max(need, (frame.head:GetStringWidth() or 0)) end
 
         maxW = maxW or 260
 
-        if need > maxW then b.fs:SetWidth(maxW - b.padX); need = maxW end
+        if need > maxW then frame.fs:SetWidth(maxW - frame.padX); need = maxW end
 
-        b:SetWidth(math.max(1, need))
+        frame:SetWidth(math.max(1, need))
 
-        local h = (b.fs:GetStringHeight() or 10) + b.pad
+        local h = (frame.fs:GetStringHeight() or 10) + frame.pad
 
-        if style == "section" then h = h + (b.head:GetStringHeight() or 16) + 4 end
+        if style == "section" then h = h + (frame.head:GetStringHeight() or 16) + 4 end
 
-        b:SetHeight(math.max(1, h))
+        frame:SetHeight(math.max(1, h))
 
         return h
     end
 
-    return b
+    return frame
 end
 
+-- Shows or updates the partner status block in the quest log
 function S.UpdateQuestLogStatus()
     local header = titleHeader()
 
     if not header then
-        for _, b in pairs(blocks) do restoreMoved(b); b:Hide() end
+        for _, block in pairs(blocks) do restoreMoved(block); block:Hide() end
 
         return
     end
@@ -823,7 +841,7 @@ function S.UpdateQuestLogStatus()
         blocks[parent] = block
     end
 
-    for p, b in pairs(blocks) do if p ~= parent then restoreMoved(b); b.fs:SetText(""); b:Hide() end end
+    for p, block in pairs(blocks) do if p ~= parent then restoreMoved(block); block.fs:SetText(""); block:Hide() end end
 
     restoreMoved(block)
 
@@ -883,16 +901,16 @@ function S.UpdateQuestLogStatus()
     if txt == "" or takeDesc then return end
 
     -- whatever sat right under our anchor now sits under our block (remembered, so it can be put back)
-    local function fix(r)
-        if r == block or r == block.fs or r == block.head or not r.GetNumPoints then return end
+    local function fix(row)
+        if row == block or row == block.fs or row == block.head or not row.GetNumPoints then return end
 
-        for i = 1, r:GetNumPoints() do
-            local p, rel, rp, x, y = r:GetPoint(i)
+        for i = 1, row:GetNumPoints() do
+            local p, rel, rp, x, y = row:GetPoint(i)
 
             if rel == anchor and p == "TOPLEFT" and rp == "BOTTOMLEFT" then
-                block.moved[#block.moved + 1] = { r = r, p = p, rel = rel, rp = rp, x = x, y = y }
+                block.moved[#block.moved + 1] = { r = row, p = p, rel = rel, rp = rp, x = x, y = y }
 
-                r:SetPoint(p, block, rp, x, (y or 0) - 4)
+                row:SetPoint(p, block, rp, x, (y or 0) - 4)
             end
         end
     end
@@ -902,20 +920,22 @@ function S.UpdateQuestLogStatus()
 end
 
 local function later() C_Timer.After(0, function() pcall(S.UpdateQuestLogStatus) end) end
+
+-- Hooks the quest log and quest windows so the block follows them
 local function hookQuestLog()
     for _, fn in ipairs({ "QuestInfo_Display", "QuestLog_UpdateQuestDetails", "QuestLog_Update", "SelectQuestLogEntry", "QuestMapFrame_ShowQuestDetails", "QuestFrameProgressPanel_OnShow", "QuestFrameDetailPanel_OnShow", "QuestFrameRewardPanel_OnShow" }) do
         if type(_G[fn]) == "function" then hooksecurefunc(fn, later) end
     end
 end
 
-local f = CreateFrame("Frame")
+local frame = CreateFrame("Frame")
 
-f:RegisterEvent("PLAYER_LOGIN")
-f:RegisterEvent("QUEST_LOG_UPDATE")
+frame:RegisterEvent("PLAYER_LOGIN")
+frame:RegisterEvent("QUEST_LOG_UPDATE")
 
-for _, ev in ipairs({ "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_GREETING" }) do pcall(f.RegisterEvent, f, ev) end
+for _, ev in ipairs({ "QUEST_DETAIL", "QUEST_PROGRESS", "QUEST_COMPLETE", "QUEST_FINISHED", "QUEST_GREETING" }) do pcall(frame.RegisterEvent, frame, ev) end
 
-f:SetScript("OnEvent", function(_, ev)
+frame:SetScript("OnEvent", function(_, ev)
     if ev == "PLAYER_LOGIN" then
         pcall(hookTooltips); pcall(hookQuestLog)
     elseif ev == "QUEST_LOG_UPDATE" then

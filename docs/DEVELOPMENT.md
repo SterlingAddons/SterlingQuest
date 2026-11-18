@@ -17,6 +17,9 @@ All Lua in `Sterling/` and `qa/` follows one style (Sterling code rules, Nov 202
 - Lines in a block are grouped by how they start (`local`, `if`, `return`, calls, assignments), with a blank line between groups. A comment stays with the code below it.
 - Never put code after a `--` comment on the same line.
 
+- Local names say what they hold (`partner`, `snap`, `step`, `row`), not `p`, `sn`, `st`, `r`. Short names stay for loop counters and the usual pairs (`i`, `k, v`, `x, y`, `dx, dy`, `ok`). Shared names never change: `S.*` functions, saved variables, message tags, the Companion app's file fields. `qa/scopes.py` finds every local and its uses, so a rename can't touch anything else, and `qa/bytecode.sh` proves the file still compiles to the same code.
+- A one-line comment above each function says what it's for.
+
 `python3 qa/style.py Sterling/*.lua` applies it (formatting only: whitespace and line breaks, never the order of anything). `qa/t_style.py` (part of `all.sh`) fails if a file isn't formatted. To prove a change is formatting only, compare what the file compiles to: `diff <(qa/bytecode.sh old/Core.lua) <(qa/bytecode.sh Sterling/Core.lua)` must print nothing (needs `luac5.1`; the listing leaves out line numbers and local names).
 
 ## Versions

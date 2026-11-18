@@ -19,6 +19,8 @@ end
 
 local function qdb() local db = mod("QuestieDB"); if db and db.QueryQuestSingle then return db end end
 function S.HasQuestie() return qdb() ~= nil end
+
+-- One field of a quest from Questie's database (nil when Questie isn't there)
 local function Q(qid, key)
     local db = qdb(); if not db then return nil end
     local ok, v = pcall(db.QueryQuestSingle, qid, key)
@@ -26,11 +28,13 @@ local function Q(qid, key)
     if ok then return v end
 end
 
+-- One field of an NPC from Questie's database
 local function NPC(id, key)
     local db = qdb(); if not (db and db.QueryNPCSingle) then return nil end
     local ok, v = pcall(db.QueryNPCSingle, id, key); if ok then return v end
 end
 
+-- One field of a world object from Questie's database
 local function OBJ(id, key)
     local db = qdb(); if not (db and db.QueryObjectSingle) then return nil end
     local ok, v = pcall(db.QueryObjectSingle, id, key); if ok then return v end
@@ -43,14 +47,15 @@ local function testMissing(qid)
     if type(pre) == "table" and #pre > 0 then
         local any = false
 
-        for _, pq in ipairs(pre) do if S.IsFlaggedDone(pq) then any = true end end
+        for _, preQid in ipairs(pre) do if S.IsFlaggedDone(preQid) then any = true end end
 
         if not any then return pre[1] end
     end
 
-    if type(grp) == "table" then for _, pq in ipairs(grp) do if pq > 0 and not S.IsFlaggedDone(pq) then return pq end end end
+    if type(grp) == "table" then for _, preQid in ipairs(grp) do if preQid > 0 and not S.IsFlaggedDone(preQid) then return preQid end end end
 end
 
+-- Can you pick this quest up now? (Questie's own check; test mode judges by prerequisites only)
 local function doable(qid)
     if S.testMode then return testMissing(qid) == nil end
 
@@ -58,6 +63,7 @@ local function doable(qid)
     local ok, v = pcall(db.IsDoable, qid); if ok then return v and true or false end
 end
 
+-- Questie's reason a quest isn't available to you, and its state
 local function whyNot(qid)
     if S.testMode then return testMissing(qid) and "Unavailable: Incomplete pre-quest" or "Available" end
 
@@ -67,24 +73,27 @@ local function whyNot(qid)
     if ok then return text, state end
 end
 
+-- The world map (uiMapID) for one of Questie's zone ids
 local function uiMapFor(areaId)
-    local z = mod("ZoneDB")
+    local zone = mod("ZoneDB")
 
-    if not (z and z.GetUiMapIdByAreaId and areaId) then return nil end
+    if not (zone and zone.GetUiMapIdByAreaId and areaId) then return nil end
 
-    local ok, v = pcall(z.GetUiMapIdByAreaId, z, areaId); if ok then return v end
+    local ok, v = pcall(zone.GetUiMapIdByAreaId, zone, areaId); if ok then return v end
 end
 
+-- The zone a sub-area belongs to, so caves and towns group with their zone
 local function parentZone(areaId)
-    local z = mod("ZoneDB")
+    local zone = mod("ZoneDB")
 
-    if not (z and z.GetParentZoneId and areaId) then return areaId end
+    if not (zone and zone.GetParentZoneId and areaId) then return areaId end
 
-    local ok, v = pcall(z.GetParentZoneId, z, areaId); if ok and v then return v end
+    local ok, v = pcall(zone.GetParentZoneId, zone, areaId); if ok and v then return v end
 
     return areaId
 end
 
+-- A map's name from the game, if it has one
 local function mapName(uiMap)
     if uiMap and C_Map and C_Map.GetMapInfo then local ok, info = pcall(C_Map.GetMapInfo, uiMap); if ok and info and info.name then return info.name end end
 
@@ -153,9 +162,9 @@ function S.QuestieNPC(id, key) return NPC(id, key) end
 
 -- Zone key for a quest: the parent area id from zoneOrSort, else the quest giver's zone. nil = unknown.
 local function zoneOf(qid)
-    local z = Q(qid, "zoneOrSort")
+    local zone = Q(qid, "zoneOrSort")
 
-    if type(z) == "number" and z > 0 then return parentZone(z) end
+    if type(zone) == "number" and zone > 0 then return parentZone(zone) end
 
     local s = spot(Q(qid, "startedBy"))
 
@@ -175,6 +184,7 @@ function S.TestQuestPicks(zones, few, maxLvl)
 
     for area, all in pairs(zones) do want[area] = all; out[area] = {} end
 
+    -- Is a quest open to Horde races? Questie stores races as bit flags
     local function horde(r)   -- Orc 2, Undead 16, Tauren 32, Troll 128
         if not r or r == 0 then return true end
 
@@ -184,10 +194,10 @@ function S.TestQuestPicks(zones, few, maxLvl)
     end
 
     for qid = 1, 12000 do
-        local z = Q(qid, "zoneOrSort")
+        local zone = Q(qid, "zoneOrSort")
 
-        if type(z) == "number" and z > 0 then
-            local area = parentZone(z)
+        if type(zone) == "number" and zone > 0 then
+            local area = parentZone(zone)
             local all = want[area]
 
             if all ~= nil and (all or #out[area] < few) then
@@ -206,6 +216,7 @@ end
 ---------------------------------------------------------------------------
 local cache = {}
 
+-- A cheap fingerprint of your finished quests, so the zone list is only rebuilt when it changes
 local function myStamp()
     local n = 0
 
@@ -217,36 +228,37 @@ end
 
 -- Zones: { { key=areaId, name=, map=uiMapId, quests={qid,...}, count= }, ... } sorted by name
 function S.CatchupZones(partner)
-    local sn = partner and S.snaps[partner]
+    local snap = partner and S.snaps[partner]
 
-    if not sn then return {} end
+    if not snap then return {} end
     if not S.HasQuestie() then return nil end
 
     S.Refresh()
 
-    local stamp = (sn.seq or 0) .. ":" .. myStamp() .. ":" .. (UnitLevel("player") or 0) .. ":" .. tostring(S.Opt("catchupLog", false))
+    local stamp = (snap.seq or 0) .. ":" .. myStamp() .. ":" .. (UnitLevel("player") or 0) .. ":" .. tostring(S.Opt("catchupLog", false))
     local c = cache[partner]
 
     if c and c.stamp == stamp then return c.zones end
 
     local byZone = {}
 
+    -- Adds one of the partner's quests to its zone, unless you've done it already
     local function consider(qid)
         if S.IsFlaggedDone(qid) then return end
 
-        local z = zoneOf(qid)
+        local zone = zoneOf(qid)
 
-        if not z then return end
+        if not zone then return end
 
-        byZone[z] = byZone[z] or {}
-        byZone[z][#byZone[z] + 1] = qid
+        byZone[zone] = byZone[zone] or {}
+        byZone[zone][#byZone[zone] + 1] = qid
     end
 
-    for qid in pairs(sn.completed or {}) do consider(qid) end
+    for qid in pairs(snap.completed or {}) do consider(qid) end
 
     -- quests they only picked up (not turned in) stay out unless you ask for them in Options
     if S.Opt("catchupLog", false) then
-        for qid in pairs(sn.log or {}) do if not (sn.completed and sn.completed[qid]) then consider(qid) end end
+        for qid in pairs(snap.log or {}) do if not (snap.completed and snap.completed[qid]) then consider(qid) end end
     end
 
     local zones = {}
@@ -273,10 +285,10 @@ function S.CatchupHere(zones)
 
     local byMap, byName = {}, {}
 
-    for _, z in ipairs(zones) do
-        if z.map then byMap[z.map] = byMap[z.map] or z end
+    for _, zone in ipairs(zones) do
+        if zone.map then byMap[zone.map] = byMap[zone.map] or zone end
 
-        byName[(z.name:gsub(" %(dungeon%)$", "")):lower()] = z
+        byName[(zone.name:gsub(" %(dungeon%)$", "")):lower()] = zone
     end
 
     local m = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
@@ -313,6 +325,7 @@ local PLAIN = { ["exclusive quest completed"] = "another quest replaced it", ["e
     ["profession rank"] = "needs a higher profession rank", ["event inactive"] = "holiday quest, not active now", ["automatically blacklisted"] = "Questie hides this one",
     ["disabling quest is active"] = "blocked by a quest in your log", ["disabling quest already turned in"] = "blocked by a quest you finished", ["incomplete pre-quest"] = "needs an earlier quest",
     ["incomplete pre-quest group"] = "needs earlier quests", ["reputation requirement"] = "needs reputation" }
+-- Questie's "Unavailable: reason" text without the prefix, for showing in the list
 function S.PlainReason(text)
     if type(text) ~= "string" then return "not available to you" end
 
@@ -321,6 +334,7 @@ function S.PlainReason(text)
     return PLAIN[r:lower()] or r
 end
 
+-- The catch-up plan for one zone: the partner's quests you haven't done, sorted into groups
 function S.CatchupPlan(partner, zoneKey)
     local zones = S.CatchupZones(partner)
 
@@ -336,44 +350,44 @@ function S.CatchupPlan(partner, zoneKey)
 
     if not zone then return nil end
 
-    local sn = S.snaps[partner]
+    local snap = S.snaps[partner]
     local myLevel = UnitLevel("player") or 0
     local zoneKeyName = zone.name
     local items = {}
 
     for _, qid in ipairs(zone.quests) do
-        local it = { qid = qid, name = name(qid), level = Q(qid, "requiredLevel") or 0, qlevel = Q(qid, "questLevel") or 0 }
+        local item = { qid = qid, name = name(qid), level = Q(qid, "requiredLevel") or 0, qlevel = Q(qid, "questLevel") or 0 }
 
-        it.giver = spot(Q(qid, "startedBy")); it.turnin = spot(Q(qid, "finishedBy"))
-        it.theirs = sn.completed[qid] and "done" or (sn.log[qid] and "log") or nil
+        item.giver = spot(Q(qid, "startedBy")); item.turnin = spot(Q(qid, "finishedBy"))
+        item.theirs = snap.completed[qid] and "done" or (snap.log[qid] and "log") or nil
 
-        if S.log[qid] then it.state = "inlog"; it.why = S.log[qid].complete and "ready to turn in" or "in your log"
-        elseif it.level > myLevel then it.state = "level"; it.why = "needs lvl " .. it.level
+        if S.log[qid] then item.state = "inlog"; item.why = S.log[qid].complete and "ready to turn in" or "in your log"
+        elseif item.level > myLevel then item.state = "level"; item.why = "needs lvl " .. item.level
         else
             local ok = doable(qid)
 
-            if ok then it.state = "ready"
+            if ok then item.state = "ready"
             else
                 local text, st = whyNot(qid)
                 local pre = Q(qid, "preQuestSingle"); local grp = Q(qid, "preQuestGroup")
                 local missing
 
                 for _, set in ipairs({ type(pre) == "table" and pre or {}, type(grp) == "table" and grp or {} }) do
-                    for _, pq in ipairs(set) do if pq > 0 and not S.IsFlaggedDone(pq) and not missing then missing = pq end end
+                    for _, preQid in ipairs(set) do if preQid > 0 and not S.IsFlaggedDone(preQid) and not missing then missing = preQid end end
                 end
 
                 if missing then
-                    it.state = "locked"; it.after = name(missing); it.afterId = missing
+                    item.state = "locked"; item.after = name(missing); item.afterId = missing
 
-                    local mz = zoneOf(missing); local mzMap = mz and uiMapFor(mz); it.afterZone = (mzMap and mapName(mzMap)) or (mz and areaName(mz)) or nil
+                    local mz = zoneOf(missing); local mzMap = mz and uiMapFor(mz); item.afterZone = (mzMap and mapName(mzMap)) or (mz and areaName(mz)) or nil
 
-                    it.afterInLog = S.log[missing] ~= nil
-                    it.why = "Prerequisite: " .. it.after .. (it.afterInLog and " (in your log)" or (it.afterZone and it.afterZone ~= zoneKeyName and (" (" .. it.afterZone .. ")") or ""))
-                else it.state = "other"; it.why = S.PlainReason(text) end
+                    item.afterInLog = S.log[missing] ~= nil
+                    item.why = "Prerequisite: " .. item.after .. (item.afterInLog and " (in your log)" or (item.afterZone and item.afterZone ~= zoneKeyName and (" (" .. item.afterZone .. ")") or ""))
+                else item.state = "other"; item.why = S.PlainReason(text) end
             end
         end
 
-        items[#items + 1] = it
+        items[#items + 1] = item
     end
 
     table.sort(items, function(a, b)
@@ -387,32 +401,33 @@ function S.CatchupPlan(partner, zoneKey)
     -- locked quests: after their prerequisite when it is in the same list
     local pos = {}
 
-    for i, it in ipairs(items) do pos[it.qid] = i end
+    for i, item in ipairs(items) do pos[item.qid] = i end
 
     local ordered, placed = {}, {}
 
-    local function place(it, depth)
-        if placed[it.qid] or depth > 8 then return end
-        if it.afterId and pos[it.afterId] then place(items[pos[it.afterId]], depth + 1) end
+    -- Puts a quest after the quest it follows, so chains read in order
+    local function place(item, depth)
+        if placed[item.qid] or depth > 8 then return end
+        if item.afterId and pos[item.afterId] then place(items[pos[item.afterId]], depth + 1) end
 
-        placed[it.qid] = true; ordered[#ordered + 1] = it
+        placed[item.qid] = true; ordered[#ordered + 1] = item
     end
 
-    for _, it in ipairs(items) do place(it, 0) end
+    for _, item in ipairs(items) do place(item, 0) end
 
     -- chains: a locked quest whose prerequisite is in this list hangs off that quest instead of
     -- taking its own row; the prerequisite gets it.chain = { next, next, ... } in order
     local byId = {}
 
-    for _, it in ipairs(ordered) do byId[it.qid] = it end
-    for _, it in ipairs(ordered) do
-        if it.state == "locked" and it.afterId and byId[it.afterId] then
+    for _, item in ipairs(ordered) do byId[item.qid] = item end
+    for _, item in ipairs(ordered) do
+        if item.state == "locked" and item.afterId and byId[item.afterId] then
             -- walk up to the first quest that stands on its own
-            local root, hops = byId[it.afterId], 0
+            local root, hops = byId[item.afterId], 0
 
             while root.state == "locked" and root.afterId and byId[root.afterId] and hops < 8 do root = byId[root.afterId]; hops = hops + 1 end
 
-            if root ~= it then root.chain = root.chain or {}; root.chain[#root.chain + 1] = it; it.inChain = true end
+            if root ~= item then root.chain = root.chain or {}; root.chain[#root.chain + 1] = item; item.inChain = true end
         end
     end
 
@@ -422,14 +437,14 @@ function S.CatchupPlan(partner, zoneKey)
     for _, key in ipairs({ "ready", "inlog", "locked", "level", "other" }) do
         local g = { key = key, title = titles[key], items = {} }
 
-        for _, it in ipairs(ordered) do if it.state == key and not it.inChain then g.items[#g.items + 1] = it end end
+        for _, item in ipairs(ordered) do if item.state == key and not item.inChain then g.items[#g.items + 1] = item end end
 
         if #g.items > 0 then groups[#groups + 1] = g end
     end
 
     local theirs = 0
 
-    for qid in pairs(sn.completed or {}) do if zoneOf(qid) == zoneKey then theirs = theirs + 1 end end
+    for qid in pairs(snap.completed or {}) do if zoneOf(qid) == zoneKey then theirs = theirs + 1 end end
 
     local mine = 0
 
@@ -516,13 +531,14 @@ end
 
 -- Something to do between pick-up and turn-in? Questie's data first; for quests it has no objectives
 -- for (common in Forever's own zones), a quest handed in to the same NPC that gave it almost always has.
-local function hasObjectives(qid, it)
+local function hasObjectives(qid, item)
     if #objectiveData(qid) > 0 then return true end
-    if it and it.giver and it.turnin and it.giver.name == it.turnin.name then return true end
+    if item and item.giver and item.turnin and item.giver.name == item.turnin.name then return true end
 
     return false
 end
 
+-- Where an item drops: the spawns of the mobs and objects that carry it
 local function itemSpawns(id)
     local db = qdb()
 
@@ -554,8 +570,8 @@ local function objSpot(qid, wantMap)
         elseif o.Type == "item" and o.Id then cands = itemSpawns(o.Id)
         elseif o.Type == "killcredit" and type(o.IdList) == "table" then for i = 1, math.min(3, #o.IdList) do cands[#cands + 1] = NPC(o.IdList[i], "spawns") end
         elseif o.Type == "event" then cands[1] = o.Coordinates end
-        for _, sp in ipairs(cands) do
-            local c = centroid(sp, wantMap)
+        for _, candidate in ipairs(cands) do
+            local c = centroid(candidate, wantMap)
 
             if c then c.text = o.Text or text; return c end
         end
@@ -571,17 +587,17 @@ function S.CatchupOrder() return S.Opt("catchupOrder", "route") end
 local function buildStops(plan, wantMap)
     local stops, byQ = {}, {}
 
-    for _, it in ipairs(plan.ordered) do
-        if it.state == "ready" or it.state == "inlog" or it.state == "locked" then
-            local q = { it = it }
-            local inLog = S.log[it.qid]
-            local needDo = hasObjectives(it.qid, it) and not (inLog and inLog.complete)
+    for _, item in ipairs(plan.ordered) do
+        if item.state == "ready" or item.state == "inlog" or item.state == "locked" then
+            local q = { it = item }
+            local inLog = S.log[item.qid]
+            local needDo = hasObjectives(item.qid, item) and not (inLog and inLog.complete)
 
-            if not inLog then q.pick = { kind = "pickup", it = it, sp = it.giver, q = q } end
-            if needDo then q.doit = { kind = "do", it = it, sp = objSpot(it.qid, wantMap), q = q } end
+            if not inLog then q.pick = { kind = "pickup", it = item, sp = item.giver, q = q } end
+            if needDo then q.doit = { kind = "do", it = item, sp = objSpot(item.qid, wantMap), q = q } end
 
-            q.turn = { kind = "turnin", it = it, sp = it.turnin, q = q }
-            byQ[it.qid] = q
+            q.turn = { kind = "turnin", it = item, sp = item.turnin, q = q }
+            byQ[item.qid] = q
             stops[#stops + 1] = q
         end
     end
@@ -589,19 +605,20 @@ local function buildStops(plan, wantMap)
     return stops, byQ
 end
 
+-- Turns one planned stop (pick up, do, turn in) into a Path step
 local function emitOne(leg, s)
-    local it = s.it
-    local st = { kind = s.kind, qid = it.qid, quest = it.name, npc = s.sp and s.sp.name or nil }
+    local item = s.it
+    local step = { kind = s.kind, qid = item.qid, quest = item.name, npc = s.sp and s.sp.name or nil }
 
-    if s.sp and s.sp.map and s.sp.x then st.map, st.x, st.y = s.sp.map, s.sp.x, s.sp.y end
+    if s.sp and s.sp.map and s.sp.x then step.map, step.x, step.y = s.sp.map, s.sp.x, s.sp.y end
     if s.kind == "deliver" then
-        st.npc = (s.sp and s.sp.name or "?") .. " >> " .. (s.after and s.after.name or "?")
+        step.npc = (s.sp and s.sp.name or "?") .. " >> " .. (s.after and s.after.name or "?")
 
-        if s.after and s.after.map and s.after.x then st.tmap, st.tx, st.ty = s.after.map, s.after.x, s.after.y end
-    elseif s.kind == "do" then st.npc = s.sp and s.sp.text or nil
+        if s.after and s.after.map and s.after.x then step.tmap, step.tx, step.ty = s.after.map, s.after.x, s.after.y end
+    elseif s.kind == "do" then step.npc = s.sp and s.sp.text or nil
     end
 
-    leg.steps[#leg.steps + 1] = st
+    leg.steps[#leg.steps + 1] = step
 end
 
 -- Stops in order -> path steps. A pick-up followed straight away by that quest's turn-in (nothing to do
@@ -620,6 +637,7 @@ local function emitAll(leg, seq)
     end
 end
 
+-- Rough distance between two points, with other maps counted as far away
 local function dist(a, b)
     if not (a and b and a.map and b.map and a.x and b.x) then return 500 end
     if a.map ~= b.map then return 1000 end
@@ -634,15 +652,16 @@ end
 local function routeOrder(leg, stops, byQ, here)
     local list, done = {}, {}
 
-    for _, q in ipairs(stops) do for _, k in ipairs({ "pick", "doit", "turn" }) do if q[k] then list[#list + 1] = q[k] end end end
+    for _, stop in ipairs(stops) do for _, k in ipairs({ "pick", "doit", "turn" }) do if stop[k] then list[#list + 1] = stop[k] end end end
 
     local seq = {}
 
+    -- Can this stop be done yet? Turn-ins wait for the quest's objectives, follow-ups for their prerequisite
     local function ready(s)
-        local q, it = s.q, s.it
+        local q, item = s.q, s.it
 
         if s.kind == "pickup" then
-            local pre = it.afterId and byQ[it.afterId]
+            local pre = item.afterId and byQ[item.afterId]
 
             if pre and pre.turn and not done[pre.turn] then return false end
 
@@ -684,7 +703,7 @@ end
 local function theirOrder(leg, stops, byQ, rank)
     local seq = {}
 
-    for _, q in ipairs(stops) do seq[#seq + 1] = q end
+    for _, stop in ipairs(stops) do seq[#seq + 1] = stop end
 
     table.sort(seq, function(a, b)
         local ra, rb = rank[a.it.qid], rank[b.it.qid]
@@ -698,6 +717,8 @@ local function theirOrder(leg, stops, byQ, rank)
     local emitted, out = {}, {}
 
     local function put(s) if s and not emitted[s] then emitted[s] = true; out[#out + 1] = s end end
+
+    -- Adds a quest's stops in the partner's order, with any prerequisite first
     local function doQuest(q, depth)
         if depth > 8 or emitted[q] then return end
 
@@ -731,16 +752,16 @@ function S.CatchupStart(partner, zoneKey, quiet)
 
     local leg = { n = 1, title = plan.zone.name, sub = "Catching up to " .. S.PartnerLabel(partner), time = "", steps = {} }
     local stops, byQ = buildStops(plan, plan.zone.map)
-    local sn = S.snaps[partner]
+    local snap = S.snaps[partner]
     local mode = S.CatchupOrder()
 
-    if mode == "theirs" and not (sn and sn.ordered and sn.rank) then
+    if mode == "theirs" and not (snap and snap.ordered and snap.rank) then
         mode = "route"
 
         if not quiet then msg(S.PartnerLabel(partner) .. "'s Sterling doesn't send the order yet (needs 6.20). Using the shortest route instead.") end
     end
 
-    if mode == "theirs" then theirOrder(leg, stops, byQ, sn.rank)
+    if mode == "theirs" then theirOrder(leg, stops, byQ, snap.rank)
     else
         local m, x, y
 
@@ -765,13 +786,14 @@ end
 
 -- After a /reload, rebuild the catch-up path once Questie is ready.
 function S.CatchupRestore()
-    local c = SterlingQuestDB.catchup
+    local catchup = SterlingQuestDB.catchup
 
-    if not c or SterlingQuestDB.following then return end
+    if not catchup or SterlingQuestDB.following then return end
     if not S.HasQuestie() then return end
-    if not S.CatchupStart(c.who, c.zone, true) then SterlingQuestDB.catchup = nil; S.catchupLabel = nil end
+    if not S.CatchupStart(catchup.who, catchup.zone, true) then SterlingQuestDB.catchup = nil; S.catchupLabel = nil end
 end
 
+-- Forgets the catch-up that's being followed
 function S.CatchupClear()
     SterlingQuestDB.catchup = nil; S.catchupLabel = nil
 end
@@ -787,17 +809,17 @@ end
 -- Group hints: what a grouped partner could share with you, and you with them
 ---------------------------------------------------------------------------
 -- Does a quest's requirements look met for a partner, going by their snapshot?
-local function theirDoable(qid, sn)
+local function theirDoable(qid, snap)
     local lvl = Q(qid, "requiredLevel")
 
-    if lvl and sn.level and sn.level > 0 and sn.level < lvl then return false, "needs lvl " .. lvl end
+    if lvl and snap.level and snap.level > 0 and snap.level < lvl then return false, "needs lvl " .. lvl end
 
     local pre = Q(qid, "preQuestSingle")
 
     if type(pre) == "table" and #pre > 0 then
         local any = false
 
-        for _, pq in ipairs(pre) do if sn.completed[pq] then any = true end end
+        for _, preQid in ipairs(pre) do if snap.completed[preQid] then any = true end end
 
         if not any then return false, "after " .. name(pre[1]) end
     end
@@ -805,27 +827,28 @@ local function theirDoable(qid, sn)
     local grp = Q(qid, "preQuestGroup")
 
     if type(grp) == "table" then
-        for _, pq in ipairs(grp) do if pq > 0 and not sn.completed[pq] then return false, "after " .. name(pq) end end
+        for _, preQid in ipairs(grp) do if preQid > 0 and not snap.completed[preQid] then return false, "after " .. name(preQid) end end
     end
 
     local ex = Q(qid, "exclusiveTo")
 
-    if type(ex) == "table" then for _, eq in ipairs(ex) do if sn.completed[eq] or sn.log[eq] then return false, "they did " .. name(eq) .. " instead" end end end
+    if type(ex) == "table" then for _, eq in ipairs(ex) do if snap.completed[eq] or snap.log[eq] then return false, "they did " .. name(eq) .. " instead" end end end
 
     return true
 end
 
+-- Quests either of you could share with the other while grouped
 function S.ShareCandidates(partner)
-    local sn = S.snaps[partner]
+    local snap = S.snaps[partner]
     local out = { theirs = {}, mine = {} }
 
-    if not sn then return out end
+    if not snap then return out end
 
     S.Refresh()
 
     local questie = S.HasQuestie()
 
-    for qid, q in pairs(sn.log or {}) do
+    for qid, quest in pairs(snap.log or {}) do
         if not S.log[qid] and not S.IsFlaggedDone(qid) then
             local ok, why = true, nil
 
@@ -841,20 +864,20 @@ function S.ShareCandidates(partner)
                 end
             end
 
-            out.theirs[#out.theirs + 1] = { qid = qid, name = (q.title and q.title ~= "" and q.title) or name(qid), ok = ok, why = why }
+            out.theirs[#out.theirs + 1] = { qid = qid, name = (quest.title and quest.title ~= "" and quest.title) or name(qid), ok = ok, why = why }
         end
     end
 
-    for qid, q in pairs(S.log or {}) do
-        if not sn.log[qid] and not (sn.completed and sn.completed[qid]) then
+    for qid, quest in pairs(S.log or {}) do
+        if not snap.log[qid] and not (snap.completed and snap.completed[qid]) then
             local can = S.CanShare(qid)
 
             if can ~= false then
                 local ok, why = true, nil
 
-                if questie then ok, why = theirDoable(qid, sn) end
+                if questie then ok, why = theirDoable(qid, snap) end
 
-                out.mine[#out.mine + 1] = { qid = qid, name = q.title or name(qid), ok = ok, why = why }
+                out.mine[#out.mine + 1] = { qid = qid, name = quest.title or name(qid), ok = ok, why = why }
             end
         end
     end

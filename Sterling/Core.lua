@@ -13,6 +13,7 @@ S.msg = msg
 -- Areas: sync, tooltip. Old debug_<area> toggles count as full.
 S.CHAT_LEVELS = { [0] = "Quiet", [1] = "Simple", [2] = "Advanced", [3] = "Full" }
 
+-- How much chat an area (sync, record...) is set to show: 0 quiet to 3 everything
 function S.ChatLevel(area)
     local o = SterlingQuestDB and SterlingQuestDB.opts
 
@@ -45,6 +46,7 @@ local function hideCode(text) if text:find("^PCODE\t") or text:find("^PCOK\t") t
 
 S.HideCode = hideCode
 
+-- One line describing a message for the Sync traffic list (pairing codes hidden)
 local function describe(text)
     text = hideCode(text)
 
@@ -60,6 +62,7 @@ S.DescribeSync = describe
 -- Run fn safely. One bad frame of drawing must never take the whole addon down.
 local errCount, lastErr = 0, 0
 
+-- Runs fn and reports an error in chat instead of breaking whatever called it
 function S.Safe(what, fn, ...)
     local ok, err = pcall(fn, ...)
 
@@ -92,6 +95,7 @@ local function tryCall(fn, ...)
     if ok then return a end
 end
 
+-- Your quest log: every quest with its title, objectives and whether it's complete
 function S.ReadLog()
     local log = {}
     local n = (GetNumQuestLogEntries and GetNumQuestLogEntries())
@@ -121,6 +125,7 @@ function S.ReadLog()
     return log
 end
 
+-- Every quest the game says you've turned in
 function S.ReadCompleted()
     local set = {}
     local list = tryCall(C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs)
@@ -134,6 +139,7 @@ function S.ReadCompleted()
     return set
 end
 
+-- Has this quest been turned in (by the game's list, or flagged completed)?
 function S.IsFlaggedDone(qid)
     if not qid then return false end
     if S.completed[qid] then return true end
@@ -150,13 +156,15 @@ end
 
 S.log, S.completed, S.names = {}, {}, {}
 
+-- Reads the quest log and the finished list again
 function S.Refresh()
     S.log = S.ReadLog()
     S.completed = S.ReadCompleted()
 
-    for qid, q in pairs(S.log) do S.names[qid] = q.title; S.LearnName(qid, q.title) end
+    for qid, quest in pairs(S.log) do S.names[qid] = quest.title; S.LearnName(qid, quest.title) end
 end
 
+-- A quest's name from Questie, for quests the game has no name for here
 local function questieName(qid)
     if type(QuestieLoader) ~= "table" or not QuestieLoader.ImportModule then return nil end
 
@@ -178,10 +186,11 @@ function S.LearnName(qid, name)
     if SterlingQuestDB.names[qid] ~= name then SterlingQuestDB.names[qid] = name end
 end
 
+-- The best name we have for a quest: saved, partner logs, the game, then Questie
 function S.QuestName(qid)
     if S.names[qid] then return S.names[qid] end
 
-    for _, sn in pairs(S.snaps or {}) do if sn.log[qid] and sn.log[qid].title and sn.log[qid].title ~= "" then return sn.log[qid].title end end
+    for _, snap in pairs(S.snaps or {}) do if snap.log[qid] and snap.log[qid].title and snap.log[qid].title ~= "" then return snap.log[qid].title end end
 
     if SterlingQuestDB and SterlingQuestDB.names and SterlingQuestDB.names[qid] then return SterlingQuestDB.names[qid] end
 
@@ -237,6 +246,7 @@ local SHEET = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Races"
 local COORDS = { Human = { 0, .25, 0, .25 }, Dwarf = { .25, .5, 0, .25 }, Gnome = { .5, .75, 0, .25 }, NightElf = { .75, 1, 0, .25 },
                  Tauren = { 0, .25, .25, .5 }, Scourge = { .25, .5, .25, .5 }, Troll = { .5, .75, .25, .5 }, Orc = { .75, 1, .25, .5 } }
 
+-- The r, g, b of one of the profile colours
 function S.ColorRGB(key)
     for _, c in ipairs(S.COLORS) do if c.key == key then return c.rgb[1], c.rgb[2], c.rgb[3] end end
 
@@ -245,7 +255,7 @@ end
 
 -- Put a race face on a texture. Tries the client's atlas, then the classic sprite sheet, then a plain tile.
 -- female = true picks the female portrait (falling back to the male one if the client has none).
-function S.SetFace(t, race, female)
+function S.SetFace(texture, race, female)
     race = race or "Troll"
     race = normRace(race)
 
@@ -259,47 +269,48 @@ function S.SetFace(t, race, female)
                   "raceicon-bloodelf-" .. a, "raceicon128-bloodelf-" .. a, "raceicon-skyborne-" .. b, "raceicon-bloodelf-" .. b }
     end
 
-    if t.SetAtlas then
+    if texture.SetAtlas then
         for _, name in ipairs(tries) do
-            local ok = pcall(t.SetAtlas, t, name)
+            local ok = pcall(texture.SetAtlas, texture, name)
 
-            if ok and (not t.GetAtlas or t:GetAtlas()) then t:SetTexCoord(0, 1, 0, 1) return "atlas" end
+            if ok and (not texture.GetAtlas or texture:GetAtlas()) then texture:SetTexCoord(0, 1, 0, 1) return "atlas" end
         end
     end
 
     if COORDS[race] then
-        local ok = t:SetTexture(SHEET)
+        local ok = texture:SetTexture(SHEET)
 
         -- the classic sheet has the male faces in its top half and the female faces in the bottom half
         local dv = female and .5 or 0
 
-        if ok ~= false then local c = COORDS[race]; t:SetTexCoord(c[1], c[2], c[3] + dv, c[4] + dv) return "sheet" end
+        if ok ~= false then local c = COORDS[race]; texture:SetTexCoord(c[1], c[2], c[3] + dv, c[4] + dv) return "sheet" end
     end
 
     -- unknown race or no art: a plain tile (tinted by the caller) with nothing else
-    t:SetTexture(nil); t:SetColorTexture(.6, .6, .65, 1); return "plain"
+    texture:SetTexture(nil); texture:SetColorTexture(.6, .6, .65, 1); return "plain"
 end
 
-S.FaceSource = function(race) local t = UIParent:CreateTexture(); local how = S.SetFace(t, race); t:Hide(); return how end
+S.FaceSource = function(race) local texture = UIParent:CreateTexture(); local how = S.SetFace(texture, race); texture:Hide(); return how end
 
+-- Your profile (display name, colour, race face), created on first use
 function S.Profile()
     SterlingQuestDB.profile = SterlingQuestDB.profile or {}
 
-    local p = SterlingQuestDB.profile
+    local profile = SterlingQuestDB.profile
 
-    if not p.name or p.name == "" then p.name = S.MyName() end
-    if p.race then p.race = normRace(p.race) end
-    if not p.race then
+    if not profile.name or profile.name == "" then profile.name = S.MyName() end
+    if profile.race then profile.race = normRace(profile.race) end
+    if not profile.race then
         local _, token = UnitRace("player"); token = normRace(token)
 
-        p.race = token or "Troll"
+        profile.race = token or "Troll"
 
         if token and not knownRace(token) then table.insert(S.RACES, token); S.RACE_NAME[token] = (UnitRace("player")) end
     end
 
-    if not p.color then p.color = "gold" end
+    if not profile.color then profile.color = "gold" end
 
-    return p
+    return profile
 end
 
 -- Someone else's look (from sync or a session), falling back to sensible defaults.
@@ -320,6 +331,7 @@ function S.LookFor(name, sess)
     return { name = name, race = "Troll", color = "gold" }
 end
 
+-- Where you are: map id and x, y on it
 function S.PlayerPos()
     if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition) then return nil end
 
@@ -338,6 +350,7 @@ function S.PlayerPos()
     return map, x * 100, y * 100
 end
 
+-- A map's name, or "Map <id>" when the game doesn't know it
 function S.MapName(map)
     if C_Map and C_Map.GetMapInfo and map then
         local ok, info = pcall(C_Map.GetMapInfo, map)
@@ -361,12 +374,12 @@ function S.SnapshotPieces()
 
     local entries = {}
 
-    for qid, q in pairs(S.log) do
+    for qid, quest in pairs(S.log) do
         local objs = {}
 
-        if S.ObjectiveList then for _, o in ipairs(S.ObjectiveList(qid, q.index)) do objs[#objs + 1] = clean(o.text):gsub("%s+", " ") end end
+        if S.ObjectiveList then for _, o in ipairs(S.ObjectiveList(qid, quest.index)) do objs[#objs + 1] = clean(o.text):gsub("%s+", " ") end end
 
-        entries[qid] = qid .. "." .. (q.complete and "c" or "a") .. "." .. clean(q.title) .. "." .. table.concat(objs, "~")
+        entries[qid] = qid .. "." .. (quest.complete and "c" or "a") .. "." .. clean(quest.title) .. "." .. table.concat(objs, "~")
     end
 
     return entries, S.completed
@@ -377,6 +390,7 @@ end
 -- Quest Sync app's self copy: Questie's journey is saved per PC). qid -> position; nil with neither.
 local rankCache, rankKey
 
+-- When each quest was finished, from Questie's journey and your other PCs
 function S.DoneTimes()
     local q = rawget(_G, "Questie")
     local j = type(q) == "table" and q.db and q.db.char and q.db.char.journey
@@ -402,6 +416,8 @@ function S.DoneTimes()
 end
 
 function S.ResetRank() rankCache = nil end
+
+-- Each finished quest's place in the order you did them (cached until something changes)
 function S.CompletedRank()
     local q = rawget(_G, "Questie")
     local j = type(q) == "table" and q.db and q.db.char and q.db.char.journey
@@ -445,11 +461,12 @@ local function orderDone(list)
     end)
 end
 
+-- Your quest log and finished quests packed into one string to send
 function S.MakeSnapshot(seq)
     local entries, completed = S.SnapshotPieces()
     local parts = {}
 
-    for _, e in pairs(entries) do parts[#parts + 1] = e end
+    for _, entry in pairs(entries) do parts[#parts + 1] = entry end
 
     table.sort(parts)
 
@@ -467,7 +484,7 @@ end
 function S.SnapshotToString(snap)
     local parts = {}
 
-    for qid, q in pairs(snap.log) do parts[#parts + 1] = qid .. "." .. (q.complete and "c" or "a") .. "." .. clean(q.title) .. "." .. table.concat(q.objs or {}, "~") end
+    for qid, quest in pairs(snap.log) do parts[#parts + 1] = qid .. "." .. (quest.complete and "c" or "a") .. "." .. clean(quest.title) .. "." .. table.concat(quest.objs or {}, "~") end
 
     table.sort(parts)
 
@@ -482,6 +499,7 @@ function S.SnapshotToString(snap)
     return table.concat({ "STR3", clean(snap.name), clean(snap.realm), snap.level or 0, table.concat(parts, ";"), table.concat(done, ","), snap.at or time(), "=", snap.seq or 0, snap.label or "", snap.ordered and "o" or "" }, "^")
 end
 
+-- Reads a quest-log string back into a table, or returns why it couldn't
 function S.ParseSnapshot(str)
     if type(str) ~= "string" then return nil, "empty" end
 
@@ -563,49 +581,49 @@ end
 -- Compare
 ---------------------------------------------------------------------------
 function S.Diff()
-    local p = S.partner
+    local snap = S.partner
 
-    if not p then return nil end
+    if not snap then return nil end
 
     S.Refresh()
 
     local d = { theyHave = {}, youHave = {}, theyFinished = {}, youFinished = {} }
 
-    for qid, q in pairs(p.log) do
-        if not S.log[qid] then d.theyHave[#d.theyHave + 1] = { qid = qid, title = q.title, complete = q.complete } end
+    for qid, quest in pairs(snap.log) do
+        if not S.log[qid] then d.theyHave[#d.theyHave + 1] = { qid = qid, title = quest.title, complete = quest.complete } end
     end
 
-    for qid, q in pairs(S.log) do
-        if not p.log[qid] then d.youHave[#d.youHave + 1] = { qid = qid, title = q.title, complete = q.complete } end
+    for qid, quest in pairs(S.log) do
+        if not snap.log[qid] then d.youHave[#d.youHave + 1] = { qid = qid, title = quest.title, complete = quest.complete } end
     end
 
-    for qid in pairs(p.completed) do
+    for qid in pairs(snap.completed) do
         if not S.IsFlaggedDone(qid) then d.theyFinished[#d.theyFinished + 1] = { qid = qid, title = S.QuestName(qid), inLog = S.log[qid] ~= nil } end
     end
 
     for qid in pairs(S.completed) do
-        if not p.completed[qid] then d.youFinished[#d.youFinished + 1] = { qid = qid, title = S.QuestName(qid), inLog = p.log[qid] ~= nil } end
+        if not snap.completed[qid] then d.youFinished[#d.youFinished + 1] = { qid = qid, title = S.QuestName(qid), inLog = snap.log[qid] ~= nil } end
     end
 
     d.shared = {}
 
-    for qid, q in pairs(S.log) do
-        local pq = p.log[qid]
+    for qid, quest in pairs(S.log) do
+        local theirQuest = snap.log[qid]
 
-        if pq then
+        if theirQuest then
             local mine = {}
 
-            for _, o in ipairs(S.ObjectiveList(qid, q.index)) do mine[#mine + 1] = clean(o.text):gsub("%s+", " ") end
+            for _, o in ipairs(S.ObjectiveList(qid, quest.index)) do mine[#mine + 1] = clean(o.text):gsub("%s+", " ") end
 
             local diff = {}
 
-            for i = 1, math.max(#mine, #(pq.objs or {})) do
-                local a, b = mine[i], pq.objs and pq.objs[i]
+            for i = 1, math.max(#mine, #(theirQuest.objs or {})) do
+                local a, b = mine[i], theirQuest.objs and theirQuest.objs[i]
 
                 if a ~= b and (a or b) then diff[#diff + 1] = { you = a, they = b } end
             end
 
-            if #diff > 0 or q.complete ~= pq.complete then d.shared[#d.shared + 1] = { qid = qid, title = q.title, youDone = q.complete, theyDone = pq.complete, diff = diff } end
+            if #diff > 0 or quest.complete ~= theirQuest.complete then d.shared[#d.shared + 1] = { qid = qid, title = quest.title, youDone = quest.complete, theyDone = theirQuest.complete, diff = diff } end
         end
     end
 
@@ -636,6 +654,7 @@ end
 
 S.SquashName = squash
 
+-- A character name without its realm
 local function stripRealm(n)
     n = tostring(n or "")
 
@@ -666,6 +685,7 @@ do
     S.SESSION_TOKEN = tostring(math.random(100000, 999999)) .. tostring(seed % 1000000)
 end
 
+-- Every way your own name can appear (full name, first word, profile name), squashed for matching
 function S.MyNames()
     local set = {}
 
@@ -689,6 +709,7 @@ function S.MyNames()
     return set
 end
 
+-- Is this name you?
 function S.IsMe(name)
     if not name or name == "" then return false end
 
@@ -739,6 +760,7 @@ function S.LooksLikeMe(name)
     return mine and theirs and theirs.name == mine.name and theirs.race == mine.race and theirs.color == mine.color or false
 end
 
+-- Do two character names match, ignoring spaces, case and realm?
 local function sameName(a, b)
     if not a or not b then return false end
     if squash(a) == squash(b) then return true end
@@ -760,16 +782,17 @@ end
 
 S.PerStat = perStat
 
+-- Which partners a sync state key covers (a whisper key is one person, GROUP is everyone in the group)
 local function namesForKey(key)
     if key:sub(1, 2) == "W:" then return { key:sub(3) } end
 
     local out = {}
 
-    for _, p in ipairs(SterlingQuestDB.partners or {}) do
-        if p.on and IsInGroup and IsInGroup() then
+    for _, partner in ipairs(SterlingQuestDB.partners or {}) do
+        if partner.on and IsInGroup and IsInGroup() then
             local unit = IsInRaid() and "raid" or "party"
 
-            for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do if sameName(UnitName(unit .. i), p.name) then out[#out + 1] = p.name end end
+            for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do if sameName(UnitName(unit .. i), partner.name) then out[#out + 1] = partner.name end end
         end
     end
 
@@ -783,12 +806,13 @@ function S.SessionStat(name)
     return S.sync.per[name]
 end
 
+-- Adds to a per-partner counter in the This session stats
 local function bump(keyOrName, field, n, stamp)
     local names = keyOrName:find("^W:") and namesForKey(keyOrName) or (keyOrName == "GROUP" and namesForKey("GROUP") or { keyOrName })
 
-    for _, nm in ipairs(names) do
-        local st = perStat(nm); st[field] = (st[field] or 0) + (n or 1); if stamp then st[stamp] = time() end
-        local ss = S.SessionStat(nm); ss[field] = (ss[field] or 0) + (n or 1); if stamp then ss[stamp] = time() end
+    for _, name in ipairs(names) do
+        local st = perStat(name); st[field] = (st[field] or 0) + (n or 1); if stamp then st[stamp] = time() end
+        local ss = S.SessionStat(name); ss[field] = (ss[field] or 0) + (n or 1); if stamp then ss[stamp] = time() end
     end
 end
 
@@ -801,8 +825,10 @@ function S.SyncEvent(text) S.sync.lastEvent = { text = text, at = time() }; if S
 local function shortName(n) return n and (n:match("^([^%-]+)") or n) or nil end
 
 function S.Partners() SterlingQuestDB.partners = SterlingQuestDB.partners or {}; return SterlingQuestDB.partners end
+
+-- A partner by name, and their place in the list
 function S.FindPartner(name)
-    for i, p in ipairs(S.Partners()) do if sameName(p.name, name) then return p, i end end
+    for i, partner in ipairs(S.Partners()) do if sameName(partner.name, name) then return partner, i end end
 end
 
 -- Ten partners at most: every partner is a full quest history kept in your saved data and a share
@@ -822,42 +848,44 @@ local function newKey()
     return table.concat(t)
 end
 
-function S.AddPartner(name, on)
+-- Adds someone to the Sync list (up to the partner limit), or switches them back on
+function S.AddPartner(name, enabled)
     name = shortName(name); if not name or name == "" then return end
 
     if sameName(name, UnitName("player")) or S.IsMe(name) then return end
 
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if p then if on ~= nil then p.on = on end; p.k1 = p.k1 or newKey(); return p end
+    if partner then if enabled ~= nil then partner.on = enabled end; partner.k1 = partner.k1 or newKey(); return partner end
     if S.PartnersFull() then
         if GetTime() - fullSaid > 5 then fullSaid = GetTime(); msg("|cffff9b92Your Sync list is full|r (" .. S.MAX_PARTNERS .. " partners). Remove someone on the Sync tab before adding " .. name .. ".") end
 
         return nil
     end
 
-    p = { name = name, on = (on ~= false), k1 = newKey(), change = S.ServerTime() }
+    partner = { name = name, on = (enabled ~= false), k1 = newKey(), change = S.ServerTime() }
 
-    table.insert(S.Partners(), p)
+    table.insert(S.Partners(), partner)
 
-    return p
+    return partner
 end
 
+-- Takes someone off the Sync list and forgets their quest log
 function S.RemovePartner(name)
-    local p, i = S.FindPartner(name)
+    local partner, i = S.FindPartner(name)
 
-    if p and p.guid and p.guid ~= S.MyGUID() then
+    if partner and partner.guid and partner.guid ~= S.MyGUID() then
         -- remembered (with the game server's time) so the Companion app can end that pairing too
         SterlingQuestDB.removedG = SterlingQuestDB.removedG or {}
-        SterlingQuestDB.removedG[p.guid] = S.ServerTime()
+        SterlingQuestDB.removedG[partner.guid] = S.ServerTime()
     end
 
-    if p and S.IsFav and S.IsFav(p) then S.SetFav(p, false) end   -- a removed partner is no longer a favourite
-    if p then
-        table.remove(S.Partners(), i); S.snaps[p.name] = nil
+    if partner and S.IsFav and S.IsFav(partner) then S.SetFav(partner, false) end   -- a removed partner is no longer a favourite
+    if partner then
+        table.remove(S.Partners(), i); S.snaps[partner.name] = nil
 
-        if SterlingQuestDB.snaps then SterlingQuestDB.snaps[p.name] = nil end
-        if SterlingQuestDB.offline then SterlingQuestDB.offline[p.name] = nil end
+        if SterlingQuestDB.snaps then SterlingQuestDB.snaps[partner.name] = nil end
+        if SterlingQuestDB.offline then SterlingQuestDB.offline[partner.name] = nil end
     end
 
     if SterlingQuestDB.compareWith and sameName(SterlingQuestDB.compareWith, name) then SterlingQuestDB.compareWith = nil end
@@ -865,6 +893,7 @@ function S.RemovePartner(name)
     S.SelectPartner(nil)
 end
 
+-- Keeps a partner's quest log after a sync, and tells the windows to update
 function S.StoreSnap(name, snap, str)
     name = shortName(name)
 
@@ -878,7 +907,7 @@ function S.StoreSnap(name, snap, str)
         SterlingQuestDB.recvLabels[name][snap.label] = snap.seq
     end
 
-    for qid, q in pairs(snap.log) do S.LearnName(qid, q.title) end
+    for qid, quest in pairs(snap.log) do S.LearnName(qid, quest.title) end
 
     SterlingQuestDB.snaps = SterlingQuestDB.snaps or {}
     SterlingQuestDB.snaps[name] = str
@@ -894,19 +923,20 @@ function S.SelectPartner(name)
 
     local best
 
-    for _, p in ipairs(S.Partners()) do
-        local sn = S.snaps[p.name]
+    for _, partner in ipairs(S.Partners()) do
+        local snap = S.snaps[partner.name]
 
-        if sn and (not best or (sn.source == "live" and best.source ~= "live")) then best = sn end
+        if snap and (not best or (snap.source == "live" and best.source ~= "live")) then best = snap end
     end
 
-    if not best then for _, sn in pairs(S.snaps) do best = best or sn end end
+    if not best then for _, snap in pairs(S.snaps) do best = best or snap end end
 
     S.partner = best
 
     return best
 end
 
+-- Is this person in your party or raid?
 local function inGroup(name)
     if not (IsInGroup and IsInGroup()) then return false end
 
@@ -955,6 +985,8 @@ end
 
 -- What to call a partner: your nickname for them, else the name they chose, else their character's first name.
 function S.Nickname(name) return SterlingQuestDB.nicknames and SterlingQuestDB.nicknames[shortName(name) or ""] end
+
+-- Sets or clears your nickname for a partner
 function S.SetNickname(name, nick)
     name = shortName(name); if not name then return end
     SterlingQuestDB.nicknames = SterlingQuestDB.nicknames or {}
@@ -973,7 +1005,7 @@ function S.PartnerClass(name)
         local unit = IsInRaid() and "raid" or "party"
 
         for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do
-            if sameName(UnitName(unit .. i), name) then local _, cls = UnitClass(unit .. i); return cls end
+            if sameName(UnitName(unit .. i), name) then local _, classToken = UnitClass(unit .. i); return classToken end
         end
     end
 
@@ -990,15 +1022,17 @@ function S.PartnerClass(name)
 
     if IsInGuild and IsInGuild() and GetNumGuildMembers and GetGuildRosterInfo then
         for i = 1, (GetNumGuildMembers() or 0) do
-            local gname, _, _, _, _, _, _, _, _, _, cls = GetGuildRosterInfo(i)
+            local gname, _, _, _, _, _, _, _, _, _, classToken = GetGuildRosterInfo(i)
 
-            if sameName(gname, name) then return cls end
+            if sameName(gname, name) then return classToken end
         end
     end
 end
 
 -- When we last got quest data from them (their snapshot's time), or nil.
-function S.LastSynced(name) local sn = S.snaps[shortName(name) or ""]; return sn and sn.at or nil end
+function S.LastSynced(name) local snap = S.snaps[shortName(name) or ""]; return snap and snap.at or nil end
+
+-- How a partner is shown: your nickname, else their profile name, else their first name
 function S.PartnerLabel(name)
     local n = shortName(name) or "?"
     local nick = S.Nickname(n)
@@ -1067,8 +1101,8 @@ end
 -- Second value: who should update ("they" or "you").
 function S.VersionState(name)
     local proto = S.sync and S.sync.vers and S.sync.vers[name]
-    local p = S.FindPartner(name)
-    local ver = (S.addonVers and S.addonVers[name]) or (p and p.ver)
+    local partner = S.FindPartner(name)
+    local ver = (S.addonVers and S.addonVers[name]) or (partner and partner.ver)
 
     if proto and proto ~= S.VERSION then return "nosync", proto < S.VERSION and "they" or "you", ver end
     if not ver then return nil, nil, nil end
@@ -1080,8 +1114,10 @@ function S.VersionState(name)
     return "same", nil, ver
 end
 
-function S.PartnerOnline(name) local on = S.PartnerStatus(name); return on end
+function S.PartnerOnline(name) local online = S.PartnerStatus(name); return online end
 function S.MarkHeard(name) heard[name] = GetTime() end
+
+-- Seconds since we last heard from someone (or from anyone, without a name)
 function S.LastHeard(name)
     if name then return heard[name] and (GetTime() - heard[name]) or nil end
 
@@ -1102,11 +1138,11 @@ function S.Targets()
         elseif IsInGroup() then list[#list + 1] = { chan = "PARTY", key = "GROUP" } end
     end
 
-    for _, p in ipairs(S.Partners()) do
-        local kv = S.sync and S.sync.vers and S.sync.vers[p.name]
-        local okVer = (kv == nil) or (kv == S.VERSION)
+    for _, partner in ipairs(S.Partners()) do
+        local theirProto = S.sync and S.sync.vers and S.sync.vers[partner.name]
+        local okVer = (theirProto == nil) or (theirProto == S.VERSION)
 
-        if p.on and okVer and not useGroup(p.name) and S.PartnerOnline(p.name) then list[#list + 1] = { chan = "WHISPER", target = p.name, key = "W:" .. p.name } end
+        if partner.on and okVer and not useGroup(partner.name) and S.PartnerOnline(partner.name) then list[#list + 1] = { chan = "WHISPER", target = partner.name, key = "W:" .. partner.name } end
     end
 
     return list
@@ -1181,6 +1217,7 @@ local function ctl() local c = rawget(_G, "ChatThrottleLib"); return type(c) == 
 
 local viaCTL
 
+-- ChatThrottleLib reports a message went out or was refused; refused ones are put back in the queue
 local function sentCallback(item, ok, res)
     waiting = math.max(0, waiting - 1)
 
@@ -1195,19 +1232,20 @@ local function sentCallback(item, ok, res)
     if item.tries <= 6 then C_Timer.After(1.5, function() viaCTL(item) end) end
 end
 
+-- Sends one message through ChatThrottleLib, falling back to our own slow queue without it
 viaCTL = function(item)
     if S.testMode then return true end
 
-    local c = ctl()
+    local throttle = ctl()
 
-    if not c then return false end
+    if not throttle then return false end
 
     waiting = waiting + 1
 
     -- parts of a log are bulk; everything else (confirmations, version, invites, pings) is a short control
     -- message that shouldn't wait behind a long log going to someone else
     local prio = item.text:find("^%u+\t%d+\t%d+\t%d+\t") and "NORMAL" or "ALERT"
-    local ok, err = pcall(c.SendAddonMessage, c, prio, S.PREFIX, item.text, item.chan, item.target, nil, sentCallback, item)
+    local ok, err = pcall(throttle.SendAddonMessage, throttle, prio, S.PREFIX, item.text, item.chan, item.target, nil, sentCallback, item)
 
     if not ok then waiting = math.max(0, waiting - 1); dbg("sync", "|cffff9b92send error|r: " .. tostring(err)); return false end
 
@@ -1257,7 +1295,8 @@ end
 
 local outbox, chunkN = {}, 0
 
-local function sendChunked(kind, str, tgt)
+-- Sends a long string in numbered parts that the other side puts back together
+local function sendChunked(kind, str, target)
     local n = math.ceil(#str / CHUNK)
 
     chunkN = (chunkN + 1) % 10
@@ -1267,11 +1306,11 @@ local function sendChunked(kind, str, tgt)
     outbox[kind .. id] = { str = str, n = n, at = time() }
 
     for k, o in pairs(outbox) do if time() - o.at > 300 then outbox[k] = nil end end
-    for i = 1, n do send(table.concat({ kind, id, i, n, str:sub((i - 1) * CHUNK + 1, i * CHUNK) }, "\t"), tgt) end
+    for i = 1, n do send(table.concat({ kind, id, i, n, str:sub((i - 1) * CHUNK + 1, i * CHUNK) }, "\t"), target) end
 end
 
 -- They told us which parts never arrived: send just those again.
-local function resendParts(kind, id, list, tgt)
+local function resendParts(kind, id, list, target)
     local o = outbox[kind .. id]
 
     if not o then return false end
@@ -1279,7 +1318,7 @@ local function resendParts(kind, id, list, tgt)
     for i in list:gmatch("%d+") do
         i = tonumber(i)
 
-        if i >= 1 and i <= o.n then send(table.concat({ kind, id, i, o.n, o.str:sub((i - 1) * CHUNK + 1, i * CHUNK) }, "\t"), tgt) end
+        if i >= 1 and i <= o.n then send(table.concat({ kind, id, i, o.n, o.str:sub((i - 1) * CHUNK + 1, i * CHUNK) }, "\t"), target) end
     end
 
     return true
@@ -1306,12 +1345,15 @@ S.GUID_PAT = "^Player%-%d%d?%d?%d?%d?%-%x%x%x%x%x%x%x%x$"
 
 function S.ValidGUID(g) return type(g) == "string" and g:match(S.GUID_PAT) ~= nil and g:upper():sub(8) == g:sub(8) end
 function S.MyGUID() local g = UnitGUID and UnitGUID("player"); return S.ValidGUID(g) and g or nil end
+
+-- A partner by their character id
 function S.PartnerByGUID(g)
     if not g then return nil end
 
-    for _, p in ipairs(S.Partners()) do if p.guid == g then return p end end
+    for _, partner in ipairs(S.Partners()) do if partner.guid == g then return partner end end
 end
 
+-- The next copy number: always higher than the last, even across two PCs
 local function nextSeq()
     local now = (GetServerTime and GetServerTime()) or 0
     local n = math.max((SterlingQuestDB.syncSeq or 0) + 1, now)
@@ -1332,6 +1374,7 @@ end
 
 S.NextSyncLabel = nextLabel
 
+-- Remembers what was sent, so a later confirmation can be matched to it
 local function logEntry(key, e)
     local j = journal(key)
 
@@ -1340,69 +1383,70 @@ local function logEntry(key, e)
     while #j > JOURNAL_MAX do table.remove(j, 1) end
 end
 
-local function sendTo(tgt, force, full, entries, completed, level)
-    local st = syncState()[tgt.key]
+-- Sends your quest log to one partner or the group: the whole log, or only what changed since they last confirmed
+local function sendTo(target, force, full, entries, completed, level)
+    local state = syncState()[target.key]
 
-    if full or not st then
+    if full or not state then
         local seq = nextSeq()
         local label = nextLabel()
         local body = S.MakeSnapshot(seq) .. "^" .. label .. "^o"   -- "o": finished quests are in the order they were done
 
-        sendChunked("SNAP", body, tgt)
+        sendChunked("SNAP", body, target)
 
         local e2, doneCopy = {}, {}
 
-        for q, e in pairs(entries) do e2[q] = e end
-        for q in pairs(completed) do doneCopy[q] = true end
+        for q, entry in pairs(entries) do e2[q] = entry end
+        for qid in pairs(completed) do doneCopy[qid] = true end
 
-        syncState()[tgt.key] = { seq = seq, entries = e2, done = doneCopy, level = level, fullAt = time() }
+        syncState()[target.key] = { seq = seq, entries = e2, done = doneCopy, level = level, fullAt = time() }
 
-        logEntry(tgt.key, { seq = seq, label = label, at = time(), kind = "full", n = #body })
+        logEntry(target.key, { seq = seq, label = label, at = time(), kind = "full", n = #body })
 
         S.sync.snapsOut = S.sync.snapsOut + 1; S.sync.lastSnapOut = time(); S.sync.lastMode = "full"
-        bump(tgt.key, "snapsOut", 1, "lastSnapOut"); for _, nm in ipairs(namesForKey(tgt.key)) do perStat(nm).lastMode = "full"; perStat(nm).lastLabel = label end
+        bump(target.key, "snapsOut", 1, "lastSnapOut"); for _, nm in ipairs(namesForKey(target.key)) do perStat(nm).lastMode = "full"; perStat(nm).lastLabel = label end
 
         return true
     end
 
     local changed, removed, newDone = {}, {}, {}
 
-    for qid, e in pairs(entries) do if st.entries[qid] ~= e then changed[#changed + 1] = e end end
-    for qid in pairs(st.entries) do if not entries[qid] then removed[#removed + 1] = qid end end
-    for qid in pairs(completed) do if not st.done[qid] then newDone[#newDone + 1] = qid end end
+    for qid, entry in pairs(entries) do if state.entries[qid] ~= entry then changed[#changed + 1] = entry end end
+    for qid in pairs(state.entries) do if not entries[qid] then removed[#removed + 1] = qid end end
+    for qid in pairs(completed) do if not state.done[qid] then newDone[#newDone + 1] = qid end end
 
-    if #changed == 0 and #removed == 0 and #newDone == 0 and level == st.level then return false end
+    if #changed == 0 and #removed == 0 and #newDone == 0 and level == state.level then return false end
 
     table.sort(changed); table.sort(removed); orderDone(newDone)
 
     local seq = nextSeq()
     local label = nextLabel()
-    local body = table.concat({ st.seq, seq, level, table.concat(changed, ";"), table.concat(removed, ","), table.concat(newDone, ","), label }, "^")
+    local body = table.concat({ state.seq, seq, level, table.concat(changed, ";"), table.concat(removed, ","), table.concat(newDone, ","), label }, "^")
 
-    sendChunked("DELT", body, tgt)
-    logEntry(tgt.key, { seq = seq, label = label, base = st.seq, at = time(), kind = "delta", body = body, n = #body })
+    sendChunked("DELT", body, target)
+    logEntry(target.key, { seq = seq, label = label, base = state.seq, at = time(), kind = "delta", body = body, n = #body })
 
-    st.seq = seq; st.level = level
-    st.entries = {}; for q, e in pairs(entries) do st.entries[q] = e end
+    state.seq = seq; state.level = level
+    state.entries = {}; for q, entry in pairs(entries) do state.entries[q] = entry end
 
-    for _, q in ipairs(newDone) do st.done[q] = true end
+    for _, q in ipairs(newDone) do state.done[q] = true end
 
     S.sync.deltasOut = (S.sync.deltasOut or 0) + 1; S.sync.lastSnapOut = time(); S.sync.lastMode = "delta"
-    bump(tgt.key, "deltasOut", 1, "lastSnapOut"); for _, nm in ipairs(namesForKey(tgt.key)) do perStat(nm).lastMode = "delta"; perStat(nm).lastLabel = label end
+    bump(target.key, "deltasOut", 1, "lastSnapOut"); for _, nm in ipairs(namesForKey(target.key)) do perStat(nm).lastMode = "delta"; perStat(nm).lastLabel = label end
 
     return true
 end
 
 -- Replay everything after `since` to one target from the journal; full copy if the journal can't reach back.
-local function replay(tgt, since)
-    local j = journal(tgt.key)
-    local st = syncState()[tgt.key]
+local function replay(target, since)
+    local j = journal(target.key)
+    local state = syncState()[target.key]
     local entries, completed = S.SnapshotPieces()
     local level = UnitLevel("player") or 0
 
-    if st and st.seq == since then
+    if state and state.seq == since then
         -- they have everything we've sent, but our log may have changed since: send that now
-        return sendTo(tgt, true, false, entries, completed, level)
+        return sendTo(target, true, false, entries, completed, level)
     end
 
     local chain, base = {}, since
@@ -1411,17 +1455,17 @@ local function replay(tgt, since)
         if e.kind == "delta" and e.base == base then chain[#chain + 1] = e; base = e.seq end
     end
 
-    if #chain > 0 and st and base == st.seq then
-        for _, e in ipairs(chain) do sendChunked("DELT", e.body, tgt) end
+    if #chain > 0 and state and base == state.seq then
+        for _, delta in ipairs(chain) do sendChunked("DELT", delta.body, target) end
 
-        S.sync.replays = (S.sync.replays or 0) + 1; bump(tgt.key, "replays")
+        S.sync.replays = (S.sync.replays or 0) + 1; bump(target.key, "replays")
 
-        sendTo(tgt, true, false, entries, completed, level)
+        sendTo(target, true, false, entries, completed, level)
 
         return true
     end
 
-    return sendTo(tgt, true, true, entries, completed, level)
+    return sendTo(target, true, true, entries, completed, level)
 end
 
 ---------------------------------------------------------------------------
@@ -1430,20 +1474,22 @@ end
 ---------------------------------------------------------------------------
 S.pending = S.pending or {}
 
+-- "got 3 of 8 parts" for a sync that's still coming in
 local function partsFor(name)
     for k, box in pairs(inbox) do
         if k:sub(1, #name + 1) == name .. ":" then return "got " .. box.got .. " of " .. box.n .. " parts of their log" end
     end
 end
 
+-- Ends a sync that was waiting, with a chat line saying how it went
 local function finish(name, text, failed)
-    local p = S.pending[name]
+    local pending = S.pending[name]
 
     S.pending[name] = nil
 
     -- short form for the Sync page's "Last" line
     local who = S.PartnerLabel(name)
-    local kind = (p and p.mode == "full") and "Full sync" or ((p and p.auto) and "Auto sync" or "Sync")
+    local kind = (pending and pending.mode == "full") and "Full sync" or ((pending and pending.auto) and "Auto sync" or "Sync")
     local short
 
     if text:find("complete") then short = kind .. " with " .. who .. " complete"
@@ -1455,37 +1501,40 @@ local function finish(name, text, failed)
     S.SyncEvent(short)
 
     -- user-started syncs talk at Simple; auto syncs at Advanced; failures of user-started syncs always
-    local level = (p and p.auto) and 2 or ((failed and 0) or 1)
+    local level = (pending and pending.auto) and 2 or ((failed and 0) or 1)
 
     say("sync", level, text)
 end
 
+-- Updates a waiting sync when something comes back from that partner
 function S.SyncHeard(name, what, detail)
-    local p = S.pending[name]
+    local pending = S.pending[name]
 
-    if not p then return end
+    if not pending then return end
 
     local who = S.PartnerLabel(name)
 
     if what == "off" then finish(name, who .. " has sync with you switched off on their side, so nothing came back.", true) return end
     if what == "notp" then finish(name, who .. " hasn't added you yet. Ask them to type your name in the Sync tab's + Add box, then sync again.", true) return end
-    if what == "confirmed" then p.confirmed = true
-    else p.got = detail or "already up to date"; if what == "current" then p.got = "already up to date" end end
-    if p.mode == "full" then
-        if p.got and p.confirmed then finish(name, "|cff7ee2a2Full sync complete|r with " .. who .. ": got theirs (" .. p.got .. "), they confirmed yours.") end
-    elseif p.mode == "send" then
-        if p.confirmed then finish(name, "|cff7ee2a2Sync complete|r with " .. who .. ": they have your changes.") end
-    elseif p.got then
-        finish(name, "|cff7ee2a2Sync complete|r with " .. who .. ": " .. p.got .. ".")
+    if what == "confirmed" then pending.confirmed = true
+    else pending.got = detail or "already up to date"; if what == "current" then pending.got = "already up to date" end end
+    if pending.mode == "full" then
+        if pending.got and pending.confirmed then finish(name, "|cff7ee2a2Full sync complete|r with " .. who .. ": got theirs (" .. pending.got .. "), they confirmed yours.") end
+    elseif pending.mode == "send" then
+        if pending.confirmed then finish(name, "|cff7ee2a2Sync complete|r with " .. who .. ": they have your changes.") end
+    elseif pending.got then
+        finish(name, "|cff7ee2a2Sync complete|r with " .. who .. ": " .. pending.got .. ".")
     end
 end
 
+-- Where to send something for one person: the group channel when grouped, else a whisper
 local function direct(name)
     if useGroup(name) then return { chan = IsInRaid() and "RAID" or "PARTY", key = "GROUP" } end
 
     return { chan = "WHISPER", target = name, key = "W:" .. name }
 end
 
+-- Asks for any message parts that seem to have gone missing
 local function askForMissing()
     local now = GetTime()
 
@@ -1522,8 +1571,8 @@ function S.RefreshPartners()
 
     local n = 0
 
-    for _, p in ipairs(S.Partners()) do
-        if p.on then send("PING", useGroup(p.name) and { chan = IsInRaid() and "RAID" or "PARTY", key = "GROUP" } or { chan = "WHISPER", target = p.name, key = "W:" .. p.name }); n = n + 1 end
+    for _, partner in ipairs(S.Partners()) do
+        if partner.on then send("PING", useGroup(partner.name) and { chan = IsInRaid() and "RAID" or "PARTY", key = "GROUP" } or { chan = "WHISPER", target = partner.name, key = "W:" .. partner.name }); n = n + 1 end
     end
 
     dbg("sync", "refresh: pinged " .. n .. " partner" .. (n == 1 and "" or "s"))
@@ -1535,6 +1584,7 @@ function S.RefreshPartners()
     C_Timer.After(2.5, function() if S.UI_Update then S.UI_Update() end end)
 end
 
+-- Turns one of the game's system message formats into a pattern that picks out the name
 local function sysPattern(fmt)
     if type(fmt) ~= "string" then return nil end
 
@@ -1543,6 +1593,7 @@ local function sysPattern(fmt)
     return "^" .. p .. "$"
 end
 
+-- Watches system messages for "player not online" so a waiting sync stops early
 function S.SyncSystemMessage(text)
     if type(text) ~= "string" then return end
 
@@ -1583,15 +1634,15 @@ function S.PrintSyncState()
 
     P("me: v" .. tostring(S.ADDON_VER) .. ", protocol " .. S.VERSION .. ", live sync " .. (SterlingQuestDB.sync and "on" or "off") .. ", queue " .. queued() .. ((draining or waiting > 0) and " (sending)" or "") .. ", refused so far " .. tostring(S.sync.throttled or 0) .. ", resend requests answered " .. tostring(S.sync.partsResent or 0))
 
-    for _, p in ipairs(S.Partners()) do
-        local on, how = S.PartnerStatus(p.name)
-        local st = syncState()["W:" .. p.name]
-        local sn = S.snaps[p.name]
-        local lh = heard[p.name] and math.floor(GetTime() - heard[p.name]) or nil
+    for _, partner in ipairs(S.Partners()) do
+        local online, how = S.PartnerStatus(partner.name)
+        local state = syncState()["W:" .. partner.name]
+        local snap = S.snaps[partner.name]
+        local lh = heard[partner.name] and math.floor(GetTime() - heard[partner.name]) or nil
 
-        P(p.name .. (p.on and "" or " (unchecked)") .. ": " .. (on and ("online via " .. tostring(how)) or "offline") .. ", heard " .. (lh and (lh .. "s ago") or "never this session") ..
-            ", v" .. tostring((S.addonVers and S.addonVers[p.name]) or p.ver or "?") .. ", protocol " .. tostring(S.sync.vers and S.sync.vers[p.name] or "?"))
-        P("   ours to them: #" .. tostring(st and st.seq or "none") .. "   theirs here: #" .. tostring(sn and sn.seq or "none") .. (sn and sn.at and (" from " .. date("%m/%d %H:%M", sn.at)) or "") .. (S.pending[p.name] and ("   waiting: " .. S.pending[p.name].mode .. " sync") or ""))
+        P(partner.name .. (partner.on and "" or " (unchecked)") .. ": " .. (online and ("online via " .. tostring(how)) or "offline") .. ", heard " .. (lh and (lh .. "s ago") or "never this session") ..
+            ", v" .. tostring((S.addonVers and S.addonVers[partner.name]) or partner.ver or "?") .. ", protocol " .. tostring(S.sync.vers and S.sync.vers[partner.name] or "?"))
+        P("   ours to them: #" .. tostring(state and state.seq or "none") .. "   theirs here: #" .. tostring(snap and snap.seq or "none") .. (snap and snap.at and (" from " .. date("%m/%d %H:%M", snap.at)) or "") .. (S.pending[partner.name] and ("   waiting: " .. S.pending[partner.name].mode .. " sync") or ""))
     end
 
     local n = 0
@@ -1612,7 +1663,7 @@ function S.SyncWith(who, mode, auto)
     local names = {}
 
     if who then names[1] = who
-    else for _, p in ipairs(S.Partners()) do if p.on and S.PartnerOnline(p.name) then names[#names + 1] = p.name end end end
+    else for _, partner in ipairs(S.Partners()) do if partner.on and S.PartnerOnline(partner.name) then names[#names + 1] = partner.name end end end
     if #names == 0 then if not auto then msg("Sync: nobody online to sync with.") end return end
 
     local entries, completed = S.SnapshotPieces()
@@ -1621,7 +1672,7 @@ function S.SyncWith(who, mode, auto)
 
     for _, name in ipairs(names) do
         local who2 = S.PartnerLabel(name)
-        local tgt = direct(name)
+        local target = direct(name)
 
         if not S.PartnerOnline(name) and not auto then msg("Sync with " .. who2 .. ": they look offline. Trying anyway.") end
 
@@ -1632,19 +1683,19 @@ function S.SyncWith(who, mode, auto)
         local pre = auto and "Auto sync" or "Sync"
 
         if mode == "full" then
-            S.ResetSync(tgt.key)
+            S.ResetSync(target.key)
 
             if S.snaps[name] then S.snaps[name].seq = 0 end
 
-            send("REQ\t" .. S.VERSION, tgt)
-            sendTo(tgt, true, true, entries, completed, level)
+            send("REQ\t" .. S.VERSION, target)
+            sendTo(target, true, true, entries, completed, level)
             say("sync", lvl, "|cfff3c56bFull sync started|r with " .. who2 .. ": asked for their log, sending yours.")
             S.SyncEvent("Full sync with " .. who2 .. " started")
         elseif mode == "send" then
-            if not sendTo(tgt, true, false, entries, completed, level) then finish(name, pre .. " with " .. who2 .. ": nothing new to send, they're up to date.") end
+            if not sendTo(target, true, false, entries, completed, level) then finish(name, pre .. " with " .. who2 .. ": nothing new to send, they're up to date.") end
             if S.pending[name] then say("sync", lvl, pre .. " started with " .. who2 .. ": sent your changes."); S.SyncEvent(pre .. " with " .. who2 .. " started") end
         else
-            if mode == "quick" then sendTo(tgt, true, false, entries, completed, level) end
+            if mode == "quick" then sendTo(target, true, false, entries, completed, level) end
 
             S.RequestPartner(name)
             say("sync", lvl, pre .. " started with " .. who2 .. ": " .. (mode == "quick" and "sent your changes, " or "") .. "asked for theirs.")
@@ -1652,16 +1703,16 @@ function S.SyncWith(who, mode, auto)
         end
 
         C_Timer.After(mode == "full" and 60 or 30, function()
-            local p = S.pending[name]
+            local pending = S.pending[name]
 
-            if not (p and p.token == token) then return end
+            if not (pending and pending.token == token) then return end
 
             local missing = {}
 
-            if p.mode == "full" then
-                if not p.got then missing[#missing + 1] = "their log never arrived" .. (partsFor(name) and (" (" .. partsFor(name) .. ")") or "") end
-                if not p.confirmed then missing[#missing + 1] = "they didn't confirm yours" end
-            elseif p.mode == "send" then missing[1] = "they didn't confirm your changes"
+            if pending.mode == "full" then
+                if not pending.got then missing[#missing + 1] = "their log never arrived" .. (partsFor(name) and (" (" .. partsFor(name) .. ")") or "") end
+                if not pending.confirmed then missing[#missing + 1] = "they didn't confirm yours" end
+            elseif pending.mode == "send" then missing[1] = "they didn't confirm your changes"
             else missing[1] = "no reply" .. (partsFor(name) and (" (" .. partsFor(name) .. ")") or "") end
             local theirVer = (S.addonVers and S.addonVers[name]) or (S.FindPartner(name) and S.FindPartner(name).ver)
             local vnum = S.BuildOf(theirVer)
@@ -1675,7 +1726,7 @@ function S.SyncWith(who, mode, auto)
                 why = "Their version is unknown. They may be offline, or need 5.37 or newer."
             end
 
-            finish(name, "|cffff9b92" .. (p.auto and "Auto sync" or "Sync") .. " with " .. who2 .. " didn't finish|r after " .. (p.mode == "full" and 60 or 30) .. " seconds: " .. table.concat(missing, ", ") .. ". " .. why, true)
+            finish(name, "|cffff9b92" .. (pending.auto and "Auto sync" or "Sync") .. " with " .. who2 .. " didn't finish|r after " .. (pending.mode == "full" and 60 or 30) .. " seconds: " .. table.concat(missing, ", ") .. ". " .. why, true)
         end)
     end
 end
@@ -1688,24 +1739,26 @@ S.offSince = {}       -- name -> GetTime() when they first looked offline (clear
 
 local autoDone = {}   -- name -> GetTime() of the last auto sync, so one trigger doesn't fire twice
 
+-- Starts a quiet sync with a partner when the Auto sync option allows it
 function S.AutoSync(name, why)
     if S.testMode then return end   -- screenshot mode: no syncs start, so nothing shows "Syncing..."
     if not S.Opt("autoSync", true) or not SterlingQuestDB.sync then return end
 
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if not (p and p.on) then return end
-    if S.pending[p.name] then return end
-    if autoDone[p.name] and GetTime() - autoDone[p.name] < 20 then return end
+    if not (partner and partner.on) then return end
+    if S.pending[partner.name] then return end
+    if autoDone[partner.name] and GetTime() - autoDone[partner.name] < 20 then return end
 
-    autoDone[p.name] = GetTime()
+    autoDone[partner.name] = GetTime()
 
-    dbg("sync", "auto sync with " .. p.name .. ": " .. tostring(why))
-    S.SyncWith(p.name, "quick", true)
+    dbg("sync", "auto sync with " .. partner.name .. ": " .. tostring(why))
+    S.SyncWith(partner.name, "quick", true)
 end
 
+-- Auto sync with every partner who's online
 function S.AutoSyncAll(why)
-    for _, p in ipairs(S.Partners()) do if p.on and S.PartnerOnline(p.name) then S.AutoSync(p.name, why) end end
+    for _, partner in ipairs(S.Partners()) do if partner.on and S.PartnerOnline(partner.name) then S.AutoSync(partner.name, why) end end
 end
 
 -- The periodic check: ask each online partner for anything after the copy we hold, and send ours.
@@ -1715,8 +1768,8 @@ local function autoCheck()
 
     local n = 0
 
-    for _, p in ipairs(S.Partners()) do
-        if p.on and S.PartnerOnline(p.name) and not S.pending[p.name] then S.RequestPartner(p.name); n = n + 1 end
+    for _, partner in ipairs(S.Partners()) do
+        if partner.on and S.PartnerOnline(partner.name) and not S.pending[partner.name] then S.RequestPartner(partner.name); n = n + 1 end
     end
 
     if n > 0 then S.ScheduleBroadcast(); dbg("sync", "auto check: asked " .. n .. " partner" .. (n == 1 and "" or "s") .. " for anything new") end
@@ -1756,11 +1809,13 @@ function S.CanShare(qid)
     return nil
 end
 
+-- Asks a partner to share a quest with you
 function S.AskShare(name, qid)
     send("ASK\t" .. qid .. "\t" .. clean(S.QuestName(qid)), direct(name))
     msg("Asked " .. S.PartnerLabel(name) .. " to share " .. S.QuestName(qid) .. ".")
 end
 
+-- The last copy of yours that a partner confirmed: number, time and label
 function S.Confirmed(key)
     local best, at, label
 
@@ -1784,11 +1839,12 @@ function S.Broadcast(force, full, only)
     local entries, completed = S.SnapshotPieces()
     local level = UnitLevel("player") or 0
 
-    for _, t in ipairs(targets) do
-        if not only or t.key == only then sendTo(t, force, full, entries, completed, level) end
+    for _, target in ipairs(targets) do
+        if not only or target.key == only then sendTo(target, force, full, entries, completed, level) end
     end
 end
 
+-- Sends a recorded session to your partners
 function S.SendSession(sess)
     if not sess then msg("No such session.") return end
     if not channel() then msg("Nobody to send to: add a partner in the Sync tab, and be online at the same time.") return end
@@ -1798,6 +1854,7 @@ end
 
 S.warned = {}
 
+-- Warns once in chat when a partner's Sterling can't sync with yours
 function S.VersionMismatch(name, ver)
     if S.warned[name] == ver then return end
 
@@ -1819,39 +1876,41 @@ function S.Mismatches()
 end
 
 -- Ask for a copy. If we already hold a numbered copy from that person, ask only for what came after it.
-function S.SendProfile(tgt)
-    local p = S.Profile()
+function S.SendProfile(target)
+    local profile = S.Profile()
 
-    send("PROF\t" .. (p.race or "Troll") .. "\t" .. (p.color or "gold") .. "\t" .. (p.name or ""), tgt)
-    send("FACE\t" .. (p.female and "f" or "m"), tgt)   -- female or male portrait, right after PROF (older copies ignore it)
-    send("AVER\t" .. tostring(S.ADDON_VER), tgt)   -- addon version, shown on hover in the Sync list (older copies ignore it)
-    send("ME\t" .. S.SESSION_TOKEN, tgt)            -- if this comes back to us, its sender name is ours
+    send("PROF\t" .. (profile.race or "Troll") .. "\t" .. (profile.color or "gold") .. "\t" .. (profile.name or ""), target)
+    send("FACE\t" .. (profile.female and "f" or "m"), target)   -- female or male portrait, right after PROF (older copies ignore it)
+    send("AVER\t" .. tostring(S.ADDON_VER), target)   -- addon version, shown on hover in the Sync list (older copies ignore it)
+    send("ME\t" .. S.SESSION_TOKEN, target)            -- if this comes back to us, its sender name is ours
 
     local g = S.MyGUID()
 
-    if g then send("GID\t" .. g, tgt) end          -- character id for the Companion app (older copies ignore it)
+    if g then send("GID\t" .. g, target) end          -- character id for the Companion app (older copies ignore it)
 
     -- our Companion app version (older copies ignore it): the version, empty = no app,
     -- nothing at all when the companion is there but its inbox doesn't say yet
     -- level, class token and race, for the Companion app's partner list (older copies ignore it)
     do
-        local _, cls = UnitClass("player")
+        local _, classToken = UnitClass("player")
 
-        send("CHAR\t" .. tostring(UnitLevel("player") or 0) .. "\t" .. tostring(cls or "") .. "\t" .. tostring((UnitRace("player")) or ""):gsub("[\t|]", ""), tgt)
+        send("CHAR\t" .. tostring(UnitLevel("player") or 0) .. "\t" .. tostring(classToken or "") .. "\t" .. tostring((UnitRace("player")) or ""):gsub("[\t|]", ""), target)
     end
 
     local av = S.MyAppVersion()
 
-    if av or not S.AppPresent() then send("APPV\t" .. (av or ""), tgt) end
+    if av or not S.AppPresent() then send("APPV\t" .. (av or ""), target) end
 end
 
+-- Asks a partner for their quest log: only the changes if we have an earlier copy, else all of it
 function S.RequestPartner(name)
     if S.testMode then return end
 
-    local function ask(tgt, who)
-        local sn = who and S.snaps[who]
+    -- Sends the request to one channel
+    local function ask(target, who)
+        local snap = who and S.snaps[who]
 
-        if sn and sn.seq and sn.seq > 0 then send("SINCE\t" .. S.VERSION .. "\t" .. sn.seq, tgt) else send("REQ\t" .. S.VERSION, tgt) end
+        if snap and snap.seq and snap.seq > 0 then send("SINCE\t" .. S.VERSION .. "\t" .. snap.seq, target) else send("REQ\t" .. S.VERSION, target) end
     end
 
     if name then ask({ chan = "WHISPER", target = name, key = "W:" .. name }, name); S.SendKey(name)
@@ -1860,6 +1919,7 @@ end
 
 local pending = false
 
+-- Sends your changes to partners shortly, so several quick changes go out as one
 function S.ScheduleBroadcast()
     if not SterlingQuestDB.sync or pending then return end
 
@@ -1911,10 +1971,10 @@ function S.ApplyDelta(short, whole)
     for piece in (whole .. "^"):gmatch("(.-)%^") do f[#f + 1] = piece end
 
     local base, seq, level = tonumber(f[1]), tonumber(f[2]), tonumber(f[3])
-    local p = S.snaps[short]
+    local snap = S.snaps[short]
 
-    if p and p.seq and seq and seq <= p.seq then return "old" end
-    if not (seq and p and (p.source == "live" or p.source == "saved" or p.source == "offline") and p.seq == base) then return "step", base, p and p.seq end
+    if snap and snap.seq and seq and seq <= snap.seq then return "old" end
+    if not (seq and snap and (snap.source == "live" or snap.source == "saved" or snap.source == "offline") and snap.seq == base) then return "step", base, snap and snap.seq end
 
     for item in (f[4] or ""):gmatch("[^;]+") do
         local qid, st, title, objs = item:match("^(%d+)%.(%a)%.([^%.]*)%.?(.*)$")
@@ -1924,23 +1984,23 @@ function S.ApplyDelta(short, whole)
 
             for t in (objs or ""):gmatch("[^~]+") do o[#o + 1] = t end
 
-            p.log[tonumber(qid)] = { title = title, complete = (st == "c"), objs = o }
+            snap.log[tonumber(qid)] = { title = title, complete = (st == "c"), objs = o }
         end
     end
 
-    for qid in (f[5] or ""):gmatch("%d+") do p.log[tonumber(qid)] = nil end
+    for qid in (f[5] or ""):gmatch("%d+") do snap.log[tonumber(qid)] = nil end
 
-    p.rank = p.rank or {}
+    snap.rank = snap.rank or {}
 
     for qid in (f[6] or ""):gmatch("%d+") do
         qid = tonumber(qid)
 
-        if not p.completed[qid] then p.completed[qid] = true; p.rankMax = (p.rankMax or 0) + 1; p.rank[qid] = p.rankMax end
+        if not snap.completed[qid] then snap.completed[qid] = true; snap.rankMax = (snap.rankMax or 0) + 1; snap.rank[qid] = snap.rankMax end
     end
 
-    p.level = level or p.level; p.seq = seq; p.at = time(); p.label = f[7] ~= "" and f[7] or p.label
+    snap.level = level or snap.level; snap.seq = seq; snap.at = time(); snap.label = f[7] ~= "" and f[7] or snap.label
 
-    S.StoreSnap(short, p, S.SnapshotToString(p))
+    S.StoreSnap(short, snap, S.SnapshotToString(snap))
     S.SelectPartner(nil)
 
     local nc = 0
@@ -1994,33 +2054,35 @@ end
 
 S.Sign = sign
 
-local function sharedKey(p)
-    if not (p and p.k1 and p.k2) then return nil end
+-- The key both partners share for signing offline strings (their two halves, sorted)
+local function sharedKey(partner)
+    if not (partner and partner.k1 and partner.k2) then return nil end
 
-    return p.k1 < p.k2 and (p.k1 .. p.k2) or (p.k2 .. p.k1)
+    return partner.k1 < partner.k2 and (partner.k1 .. partner.k2) or (partner.k2 .. partner.k1)
 end
 
 -- "signed": both halves known. "half": ours only (needs one live sync, or a full string each way).
 function S.KeyState(name)
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if not p then return "none" end
+    if not partner then return "none" end
 
-    return sharedKey(p) and "signed" or "half"
+    return sharedKey(partner) and "signed" or "half"
 end
 
 local keySent = {}
 
+-- Sends your half of the shared key to a partner (once a session, unless forced)
 function S.SendKey(name, force)
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if not p then return end
-    if keySent[p.name] and not force then return end
+    if not partner then return end
+    if keySent[partner.name] and not force then return end
 
-    p.k1 = p.k1 or newKey()
-    keySent[p.name] = true
+    partner.k1 = partner.k1 or newKey()
+    keySent[partner.name] = true
 
-    send("KEY\t" .. p.k1, { chan = "WHISPER", target = p.name, key = "W:" .. p.name })   -- whisper only, never a group channel
+    send("KEY\t" .. partner.k1, { chan = "WHISPER", target = partner.name, key = "W:" .. partner.name })   -- whisper only, never a group channel
 end
 
 -- What the partner is known to hold from us (set when they confirm a live sync or their string says so),
@@ -2032,23 +2094,24 @@ local function offState(name)
     return SterlingQuestDB.offline[name]
 end
 
+-- A copy of what was sent, kept to work out the next set of changes
 local function copyState(seq, entries, done, level)
     local e2, d2 = {}, {}
 
-    for q, e in pairs(entries) do e2[q] = e end
-    for q in pairs(done) do d2[q] = true end
+    for q, entry in pairs(entries) do e2[q] = entry end
+    for qid in pairs(done) do d2[qid] = true end
 
     return { seq = seq, entries = e2, done = d2, level = level, at = time() }
 end
 
 -- A live ACK for the newest thing we sent: that is now their confirmed copy.
 function S.NoteConfirmed(name, seq)
-    local st = syncState()["W:" .. name]
+    local state = syncState()["W:" .. name]
 
-    if st and st.seq == seq and S.FindPartner(name) then
+    if state and state.seq == seq and S.FindPartner(name) then
         local o = offState(name)
 
-        o.base = copyState(st.seq, st.entries, st.done, st.level); o.pend = nil
+        o.base = copyState(state.seq, state.entries, state.done, state.level); o.pend = nil
     end
 end
 
@@ -2056,18 +2119,18 @@ S.OFFLINE_PART = 1880   -- Discord cuts messages at 2000 characters
 
 -- Make the string for one partner. Returns a list of parts and an info table, or nil and a reason.
 function S.OfflineExport(name, forceFull)
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if not p then return nil, "They're not on your Sync list." end
+    if not partner then return nil, "They're not on your Sync list." end
 
     local lib = LD()
 
     if not lib then return nil, "LibDeflate didn't load (it ships inside Sterling's Libs folder). Reinstall Sterling Quest Sync." end
 
-    p.k1 = p.k1 or newKey()
+    partner.k1 = partner.k1 or newKey()
 
-    local o = offState(p.name)
-    local key = sharedKey(p)
+    local o = offState(partner.name)
+    local key = sharedKey(partner)
     local entries, completed = S.SnapshotPieces()
     local level = UnitLevel("player") or 0
 
@@ -2079,7 +2142,7 @@ function S.OfflineExport(name, forceFull)
     if base then
         local changed, removed, newDone = {}, {}, {}
 
-        for qid, e in pairs(entries) do if base.entries[qid] ~= e then changed[#changed + 1] = e end end
+        for qid, entry in pairs(entries) do if base.entries[qid] ~= entry then changed[#changed + 1] = entry end end
         for qid in pairs(base.entries) do if not entries[qid] then removed[#removed + 1] = qid end end
         for qid in pairs(completed) do if not base.done[qid] then newDone[#newDone + 1] = qid end end
 
@@ -2095,13 +2158,13 @@ function S.OfflineExport(name, forceFull)
     o.pend = copyState(seq, entries, completed, level)
 
     -- if they import it, live sync carries on from this copy; if they don't, the next live sync sorts it out
-    syncState()["W:" .. p.name] = copyState(seq, entries, completed, level)
+    syncState()["W:" .. partner.name] = copyState(seq, entries, completed, level)
 
-    logEntry("W:" .. p.name, { seq = seq, label = label, base = base and base.seq or nil, at = time(), kind = base and "delta" or "full", body = base and body or nil, n = #body, offline = true })
+    logEntry("W:" .. partner.name, { seq = seq, label = label, base = base and base.seq or nil, at = time(), kind = base and "delta" or "full", body = base and body or nil, n = #body, offline = true })
 
-    local ack = (S.snaps[p.name] and S.snaps[p.name].seq) or 0
-    local carry = (kind == "F" and not p.kok) and p.k1 or ""
-    local header = table.concat({ "O1", S.VERSION, clean(S.MyName()), clean(p.name), kind, ack, carry, tostring(S.ADDON_VER) }, "^")
+    local ack = (S.snaps[partner.name] and S.snaps[partner.name].seq) or 0
+    local carry = (kind == "F" and not partner.kok) and partner.k1 or ""
+    local header = table.concat({ "O1", S.VERSION, clean(S.MyName()), clean(partner.name), kind, ack, carry, tostring(S.ADDON_VER) }, "^")
     local sig = key and sign(key, header .. "\n" .. body) or ""
 
     -- the checksum catches a string that lost or gained characters on the way, signed or not
@@ -2118,7 +2181,7 @@ function S.OfflineExport(name, forceFull)
 
     S.sync.offOut = (S.sync.offOut or 0) + 1
 
-    return parts, { kind = kind, signed = key ~= nil, seq = seq, base = base and base.seq or nil, baseAt = base and base.at or nil, label = label, changes = changes, raw = #raw, chars = #packed, to = p.name }
+    return parts, { kind = kind, signed = key ~= nil, seq = seq, base = base and base.seq or nil, baseAt = base and base.at or nil, label = label, changes = changes, raw = #raw, chars = #packed, to = partner.name }
 end
 
 -- Pull the parts out of whatever was pasted (any order, several at once, junk around them).
@@ -2142,18 +2205,18 @@ function S.OfflineCollect(text)
 
     local sets = {}
 
-    for k, h in ipairs(heads) do
+    for k, head in ipairs(heads) do
         local stop = heads[k + 1] and (heads[k + 1].a - 1) or #text
 
         -- the data is one unbroken run of letters, digits and brackets; anything after the first gap is not part of it
-        local chunk = text:sub(h.b + 1, stop):match("^[%w%(%)]+") or ""
+        local chunk = text:sub(head.b + 1, stop):match("^[%w%(%)]+") or ""
 
-        if h.n >= 1 and h.n <= 60 and h.i >= 1 and h.i <= h.n then
-            local set = sets[h.id] or { n = h.n, parts = {}, got = 0, id = h.id }
+        if head.n >= 1 and head.n <= 60 and head.i >= 1 and head.i <= head.n then
+            local set = sets[head.id] or { n = head.n, parts = {}, got = 0, id = head.id }
 
-            sets[h.id] = set
+            sets[head.id] = set
 
-            if set.n == h.n and not set.parts[h.i] then set.parts[h.i] = chunk; set.got = set.got + 1 end
+            if set.n == head.n and not set.parts[head.i] then set.parts[head.i] = chunk; set.got = set.got + 1 end
         end
     end
 
@@ -2215,44 +2278,44 @@ function S.OfflineCheck(d)
     if S.IsMe(d.from) then return nil, "That's your own string. Send it to " .. d.to .. ", and paste the one they send you here." end
     if not S.IsMe(d.to) then return nil, "That string was made for " .. d.to .. ", not for this character." end
 
-    local p = S.FindPartner(d.from)
+    local partner = S.FindPartner(d.from)
 
-    if not p then
+    if not partner then
         if d.kind == "D" then return nil, d.from .. " isn't on your Sync list. Add them first, then ask for a full copy (their Offline sync window > Full copy)." end
         if S.PartnersFull() then return nil, "Your Sync list is full (" .. S.MAX_PARTNERS .. " partners). Remove someone before importing from " .. d.from .. "." end
 
         return "confirm", d.from .. " isn't on your Sync list yet. Importing adds them as a partner.\n\nThis string isn't signed, so Sterling can't prove who made it. Only import it if " .. d.from .. " gave it to you directly."
     end
 
-    local key = sharedKey(p)
+    local key = sharedKey(partner)
 
     if key and d.sig ~= "" and d.sig == sign(key, d.header .. "\n" .. d.body) then return "ok" end
     if d.kind == "D" then
-        if not key then return nil, "Offline sync needs one live sync with " .. S.PartnerLabel(p.name) .. " first (or a full copy each way). Ask them for a full copy: their Offline sync window > Full copy." end
+        if not key then return nil, "Offline sync needs one live sync with " .. S.PartnerLabel(partner.name) .. " first (or a full copy each way). Ask them for a full copy: their Offline sync window > Full copy." end
 
-        return nil, "The signature on this string doesn't match your shared key with " .. S.PartnerLabel(p.name) .. ". It may be damaged, or one of you reinstalled. Ask them for a full copy."
+        return nil, "The signature on this string doesn't match your shared key with " .. S.PartnerLabel(partner.name) .. ". It may be damaged, or one of you reinstalled. Ask them for a full copy."
     end
 
     if key and d.sig ~= "" then
-        return "confirm", "The signature on this string doesn't match your shared key with " .. S.PartnerLabel(p.name) .. " (one of you may have reinstalled).\n\nOnly import it if they gave it to you directly."
+        return "confirm", "The signature on this string doesn't match your shared key with " .. S.PartnerLabel(partner.name) .. " (one of you may have reinstalled).\n\nOnly import it if they gave it to you directly."
     end
 
-    return "confirm", "This full copy isn't signed" .. (key and "" or " (you and " .. S.PartnerLabel(p.name) .. " haven't swapped keys yet)") .. ", so Sterling can't prove who made it.\n\nOnly import it if they gave it to you directly. After this, their strings are signed."
+    return "confirm", "This full copy isn't signed" .. (key and "" or " (you and " .. S.PartnerLabel(partner.name) .. " haven't swapped keys yet)") .. ", so Sterling can't prove who made it.\n\nOnly import it if they gave it to you directly. After this, their strings are signed."
 end
 
 -- Do the import (after OfflineCheck said "ok", or the player confirmed). Returns true and a line for
 -- the window, or nil and what went wrong.
 function S.OfflineApply(d, verdict)
-    local p = S.FindPartner(d.from)
+    local partner = S.FindPartner(d.from)
 
-    if not p then p = S.AddPartner(d.from, true) end
-    if not p then return nil, "Couldn't add " .. d.from .. " to your Sync list." end
+    if not partner then partner = S.AddPartner(d.from, true) end
+    if not partner then return nil, "Couldn't add " .. d.from .. " to your Sync list." end
 
-    local who = S.PartnerLabel(p.name)
+    local who = S.PartnerLabel(partner.name)
     local line
 
     if d.kind == "F" then
-        local snap = S.ApplyFull(p.name, d.body, nil, "offline")
+        local snap = S.ApplyFull(partner.name, d.body, nil, "offline")
 
         if not snap then return nil, "Couldn't read the quest log in that string." end
 
@@ -2263,7 +2326,7 @@ function S.OfflineApply(d, verdict)
 
         line = "Imported " .. who .. "'s full copy: " .. nl .. " quests in log, " .. nd .. " done."
     else
-        local res, a1, a2 = S.ApplyDelta(p.name, d.body)
+        local res, a1, a2 = S.ApplyDelta(partner.name, d.body)
 
         if res == "old" then return nil, "You already have this update from " .. who .. ". Nothing to do." end
         if res == "step" then
@@ -2274,24 +2337,24 @@ function S.OfflineApply(d, verdict)
     end
 
     -- keys: a string that passed the signature proves they hold our half; an unsigned one may carry theirs
-    if verdict == "ok" then p.kok = true
-    elseif d.carry ~= "" then p.k2 = d.carry end
-    if d.ver then p.ver = d.ver; S.addonVers = S.addonVers or {}; S.addonVers[p.name] = d.ver end
+    if verdict == "ok" then partner.kok = true
+    elseif d.carry ~= "" then partner.k2 = d.carry end
+    if d.ver then partner.ver = d.ver; S.addonVers = S.addonVers or {}; S.addonVers[partner.name] = d.ver end
 
     -- their string says which of our updates they hold
-    local o = offState(p.name)
+    local o = offState(partner.name)
 
     if o.pend and d.ack == o.pend.seq then
         o.base, o.pend = o.pend, nil
 
-        for _, e in ipairs(journal("W:" .. p.name)) do if e.seq == d.ack then e.acked = true; e.ackAt = time(); e.by = p.name end end
+        for _, e in ipairs(journal("W:" .. partner.name)) do if e.seq == d.ack then e.acked = true; e.ackAt = time(); e.by = partner.name end end
     end
 
     S.sync.offIn = (S.sync.offIn or 0) + 1
 
     S.SyncEvent("Offline sync from " .. who .. " imported")
 
-    if S.OnPartnerData then S.Safe("partner data", S.OnPartnerData, p.name) end
+    if S.OnPartnerData then S.Safe("partner data", S.OnPartnerData, partner.name) end
     if S.UI_Update then S.UI_Update() end
 
     return true, line
@@ -2311,6 +2374,7 @@ S.app = S.app or { got = {}, problems = {} }
 S.APP_LINK = "https://github.com/SterlingAddons/SterlingQuestSync-App"
 S.APP_MAX = 65536
 
+-- Is the Companion app installed (its add-on loaded, or its data there)?
 function S.AppPresent()
     if type(rawget(_G, "SterlingQuestSyncOut")) == "table" then return true end
 
@@ -2348,6 +2412,7 @@ local function codeOK(c) return type(c) == "string" and c:match(S.CODE_PAT) ~= n
 
 S.AppCodeOK = codeOK
 
+-- The key the Companion app made for one pairing, when that pairing is active
 local function pairKey(guid)
     local pr = guid and appDB("appPairs")[guid]
 
@@ -2390,6 +2455,7 @@ function S.AppSelfPacket()
     return packed
 end
 
+-- A name cleaned to what the Companion app accepts (letters, spaces, - and '), or nil
 local function nameOK(n)
     n = tostring(n or ""):gsub("[%c%d%p]", function(c) return (c == "-" or c == "'") and c or "" end)
     n = n:gsub("^%s+", ""):gsub("%s+$", "")
@@ -2403,6 +2469,7 @@ end
 -- The newest change wins as a whole list (SterlingQuestDB.favsChange = server time of our last change).
 S.MAX_FAVS = 5
 
+-- The favourites list cleaned: valid ids, not you, no repeats, at most 5
 local function cleanFavs(list)
     local out, seen, me = {}, {}, S.MyGUID()
 
@@ -2415,20 +2482,22 @@ local function cleanFavs(list)
 end
 
 function S.Favs() SterlingQuestDB.favs = cleanFavs(SterlingQuestDB.favs); return SterlingQuestDB.favs end
-function S.FavIndex(p)
-    if not (p and p.guid) then return nil end
 
-    for i, g in ipairs(S.Favs()) do if g == p.guid then return i end end
+-- A partner's place in the favourites list, or nil
+function S.FavIndex(partner)
+    if not (partner and partner.guid) then return nil end
+
+    for i, g in ipairs(S.Favs()) do if g == partner.guid then return i end end
 end
 
 function S.IsFav(p) return S.FavIndex(p) ~= nil end
 
 -- Star or unstar a partner. Returns true, or false plus "full" / "noid".
-function S.SetFav(p, on)
-    if not p then return false end
-    if not S.ValidGUID(p.guid) then return false, "noid" end
+function S.SetFav(partner, on)
+    if not partner then return false end
+    if not S.ValidGUID(partner.guid) then return false, "noid" end
 
-    local i = S.FavIndex(p)
+    local i = S.FavIndex(partner)
     local list = SterlingQuestDB.favs   -- the cleaned list S.FavIndex just stored
 
     if on and i then return true end
@@ -2436,7 +2505,7 @@ function S.SetFav(p, on)
     if on then
         if #list >= S.MAX_FAVS then msg("You can favourite up to " .. S.MAX_FAVS .. " partners."); return false, "full" end
 
-        list[#list + 1] = p.guid
+        list[#list + 1] = partner.guid
     else
         table.remove(list, i)
     end
@@ -2455,12 +2524,12 @@ function S.PartnersSorted()
     local out, used = {}, {}
 
     for _, g in ipairs(S.Favs()) do
-        local p = S.PartnerByGUID(g)
+        local partner = S.PartnerByGUID(g)
 
-        if p and not used[p] then out[#out + 1] = p; used[p] = true end
+        if partner and not used[partner] then out[#out + 1] = partner; used[partner] = true end
     end
 
-    for _, p in ipairs(S.Partners()) do if not used[p] then out[#out + 1] = p end end
+    for _, partner in ipairs(S.Partners()) do if not used[partner] then out[#out + 1] = partner end end
 
     return out
 end
@@ -2492,16 +2561,16 @@ function S.AppOutbox()
 
     -- our own nickname: the display name set in Your profile, only when it isn't just our character name
     do
-        local pn = nameOK(SterlingQuestDB.profile and SterlingQuestDB.profile.name)
+        local profile = nameOK(SterlingQuestDB.profile and SterlingQuestDB.profile.name)
         local sq = function(x) return (tostring(x or ""):lower():gsub("[%s%p]", "")) end
 
-        if pn and sq(pn) ~= sq(name) and sq(pn) ~= sq(name:match("^(%S+)")) then entry.nick = pn end
+        if profile and sq(profile) ~= sq(name) and sq(profile) ~= sq(name:match("^(%S+)")) then entry.nick = profile end
     end
 
     -- level, class, race and Sterling version, for the app's "You" row
     do
         local lv = tonumber(UnitLevel("player")); if lv and lv >= 1 and lv <= 100 then entry.level = math.floor(lv) end
-        local _, cls = UnitClass("player"); if type(cls) == "string" and cls:match("^%u+$") and #cls <= 16 then entry.class = cls end
+        local _, classToken = UnitClass("player"); if type(classToken) == "string" and classToken:match("^%u+$") and #classToken <= 16 then entry.class = classToken end
         local rc = nameOK((UnitRace("player"))); if rc then entry.race = rc end
         local v = tostring(S.ADDON_VER or ""); if appVerOK(v) or v:match("^%d+%.%d+%.%d+%.%d+$") then entry.sterling = v end   -- internal builds have a 4th part
     end
@@ -2519,34 +2588,34 @@ function S.AppOutbox()
 
     local body
 
-    for _, p in ipairs(S.Partners()) do
-        if S.ValidGUID(p.guid) and p.guid ~= me then
+    for _, partner in ipairs(S.Partners()) do
+        if S.ValidGUID(partner.guid) and partner.guid ~= me then
             if not body then body = S.MakeSnapshot(nextSeq()) .. "^" .. nextLabel() .. "^o" end
 
-            local pk = S.AppPacket(p, body, pairKey(p.guid) or sharedKey(p))
+            local pk = S.AppPacket(partner, body, pairKey(partner.guid) or sharedKey(partner))
 
             if pk then
-                entry.partners[p.guid] = { packet = pk, change = math.max(0, math.floor(tonumber(p.change) or 0)) }
+                entry.partners[partner.guid] = { packet = pk, change = math.max(0, math.floor(tonumber(partner.change) or 0)) }
 
                 -- shown only in the app's own window: their full character name, plus the nickname you gave them (if any)
-                local nm = nameOK(p.name)
+                local nm = nameOK(partner.name)
 
-                if nm then entry.partners[p.guid].name = nm end
+                if nm then entry.partners[partner.guid].name = nm end
 
-                local nk = nameOK(S.Nickname(p.name))
+                local nk = nameOK(S.Nickname(partner.name))
 
-                if nk then entry.partners[p.guid].nick = nk end
-                if p.app == false or appVerOK(p.app) then entry.partners[p.guid].app = p.app end   -- left out: not seen since 0.2.40
+                if nk then entry.partners[partner.guid].nick = nk end
+                if partner.app == false or appVerOK(partner.app) then entry.partners[partner.guid].app = partner.app end   -- left out: not seen since 0.2.40
 
                 -- level, class, race as last heard from them, and the last live sync (server time); each left out when unknown
-                local e = entry.partners[p.guid]
-                local lv = (S.snaps[p.name] and tonumber(S.snaps[p.name].level)) or tonumber(p.lvl)   -- their quest log copy is the freshest
+                local e = entry.partners[partner.guid]
+                local level = (S.snaps[partner.name] and tonumber(S.snaps[partner.name].level)) or tonumber(partner.lvl)   -- their quest log copy is the freshest
 
-                if lv and lv >= 1 and lv <= 100 then e.level = math.floor(lv) end
-                if type(p.class) == "string" and p.class:match("^%u+$") and #p.class <= 16 then e.class = p.class end
-                if type(p.race) == "string" and p.race:match("^[%a][%a '%-]*$") and #p.race <= 24 then e.race = p.race end   -- exactly as they sent it, or left out
+                if level and level >= 1 and level <= 100 then e.level = math.floor(level) end
+                if type(partner.class) == "string" and partner.class:match("^%u+$") and #partner.class <= 16 then e.class = partner.class end
+                if type(partner.race) == "string" and partner.race:match("^[%a][%a '%-]*$") and #partner.race <= 24 then e.race = partner.race end   -- exactly as they sent it, or left out
 
-                local sn = tonumber(p.seen); if sn and sn > 1e9 then e.seen = math.floor(sn) end
+                local snap = tonumber(partner.seen); if snap and snap > 1e9 then e.seen = math.floor(snap) end
             end
         end
     end
@@ -2575,6 +2644,7 @@ function S.AppOutbox()
     out.characters[me] = entry
 end
 
+-- Is version a newer than b? (digits and dots only)
 local function verAbove(a, b)
     -- dotted version a newer than b (digits and dots only)
     a, b = tostring(a or ""), tostring(b or "")
@@ -2596,6 +2666,7 @@ end
 
 S.VerAbove = verAbove
 
+-- Merges your other PC's finished quests and nicknames from the Companion app
 local function applySelf(data)
     local lib = LD(); if not lib or not S.Deserialize then return false end
     local okD, bin = pcall(lib.DecodeForPrint, lib, data); if not okD or not bin then return false end
@@ -2604,22 +2675,22 @@ local function applySelf(data)
 
     if not sum or sum ~= sign("STQ", "S1\n" .. ser) then return false end
 
-    local okS, t = pcall(S.Deserialize, ser)
+    local okS, selfData = pcall(S.Deserialize, ser)
 
-    if not okS or type(t) ~= "table" then return false end
+    if not okS or type(selfData) ~= "table" then return false end
 
     local other = appDB("otherDone")
     local n = 0
 
-    for q, ts in pairs(type(t.done) == "table" and t.done or {}) do
-        q, ts = tonumber(q), tonumber(ts)
+    for qid, finishedAt in pairs(type(selfData.done) == "table" and selfData.done or {}) do
+        qid, finishedAt = tonumber(qid), tonumber(finishedAt)
 
-        if q and ts and q > 0 and ts > 0 and (not other[q] or ts < other[q]) then other[q] = ts; n = n + 1 end
+        if qid and finishedAt and qid > 0 and finishedAt > 0 and (not other[qid] or finishedAt < other[qid]) then other[qid] = finishedAt; n = n + 1 end
     end
 
     SterlingQuestDB.nicknames = SterlingQuestDB.nicknames or {}
 
-    for k, v in pairs(type(t.nick) == "table" and t.nick or {}) do
+    for k, v in pairs(type(selfData.nick) == "table" and selfData.nick or {}) do
         if type(k) == "string" and type(v) == "string" and not SterlingQuestDB.nicknames[k] then SterlingQuestDB.nicknames[k] = v:gsub("[|\t]", ""):sub(1, 16) end
     end
 
@@ -2636,34 +2707,34 @@ local function applyPartner(from, data, pr)
     if d.proto ~= S.VERSION then return "proto" end
     if not S.IsMe(d.to) or S.IsMe(d.from) then return "notme" end
 
-    local p = S.PartnerByGUID(from) or S.FindPartner(d.from)
+    local partner = S.PartnerByGUID(from) or S.FindPartner(d.from)
     local pk = pairKey(from)
-    local gk = p and sharedKey(p)
+    local gk = partner and sharedKey(partner)
     local signedBy = (d.sig ~= "" and pk and d.sig == sign(pk, d.header .. "\n" .. d.body) and "pair")
                                 or (d.sig ~= "" and gk and d.sig == sign(gk, d.header .. "\n" .. d.body) and "game") or nil
     if not signedBy then return (d.sig == "" and not pk) and "unsigned" or "resync" end
-    if not p then
+    if not partner then
         -- paired in the app but not on the list here: add them, unless we removed them after that pairing
         local rem = appDB("removedG")[from]
 
         if not (pr and pr.status == "active") or (rem and pr.change and rem >= pr.change) then return "removed" end
 
-        p = S.AddPartner(d.from, true)
+        partner = S.AddPartner(d.from, true)
 
-        if not p then return "full" end
+        if not partner then return "full" end
 
-        p.change = pr.change
+        partner.change = pr.change
     end
 
-    if not p.guid then p.guid = from end
-    if p.guid ~= from then return "resync" end
+    if not partner.guid then partner.guid = from end
+    if partner.guid ~= from then return "resync" end
 
-    local snap = S.ApplyFull(p.name, d.body, nil, "offline")
+    local snap = S.ApplyFull(partner.name, d.body, nil, "offline")
 
     if not snap then return "bad" end
-    if d.ver then p.ver = d.ver; S.addonVers = S.addonVers or {}; S.addonVers[p.name] = d.ver end
+    if d.ver then partner.ver = d.ver; S.addonVers = S.addonVers or {}; S.addonVers[partner.name] = d.ver end
 
-    return "ok", p
+    return "ok", partner
 end
 
 -- Read the inbox. Called once a session, a few seconds after login (and again after a /reload).
@@ -2697,14 +2768,14 @@ function S.AppInbox()
     local pairsT = appDB("appPairs")
     local seen = {}
 
-    for _, pr in ipairs(type(mine.pairs) == "table" and mine.pairs or {}) do
-        if type(pr) == "table" and S.ValidGUID(pr.partner) and pr.partner ~= me then
+    for _, pair in ipairs(type(mine.pairs) == "table" and mine.pairs or {}) do
+        if type(pair) == "table" and S.ValidGUID(pair.partner) and pair.partner ~= me then
             local okKey = function(k) return type(k) == "string" and k:match("^[%w%-_]+$") and #k >= 8 and #k <= 128 end
-            local e = { status = (pr.status == "active") and "active" or "ended", change = tonumber(pr.change) or 0 }
+            local e = { status = (pair.status == "active") and "active" or "ended", change = tonumber(pair.change) or 0 }
 
-            if e.status == "active" and okKey(pr.my_key) and okKey(pr.partner_key) then e.my, e.their = pr.my_key, pr.partner_key
+            if e.status == "active" and okKey(pair.my_key) and okKey(pair.partner_key) then e.my, e.their = pair.my_key, pair.partner_key
             elseif e.status == "active" then e.status = "ended" end
-            pairsT[pr.partner] = e; seen[pr.partner] = true
+            pairsT[pair.partner] = e; seen[pair.partner] = true
         end
     end
 
@@ -2720,9 +2791,9 @@ function S.AppInbox()
 
     local now = S.ServerTime()
 
-    for _, of in ipairs(type(mine.offers) == "table" and mine.offers or {}) do
-        if type(of) == "table" and S.ValidGUID(of.partner) and of.partner ~= me and codeOK(of.code) and tonumber(of.expires) and tonumber(of.expires) > now then
-            st.offers[of.partner] = { code = of.code, expires = tonumber(of.expires) }
+    for _, offer in ipairs(type(mine.offers) == "table" and mine.offers or {}) do
+        if type(offer) == "table" and S.ValidGUID(offer.partner) and offer.partner ~= me and codeOK(offer.code) and tonumber(offer.expires) and tonumber(offer.expires) > now then
+            st.offers[offer.partner] = { code = offer.code, expires = tonumber(offer.expires) }
         end
     end
 
@@ -2738,9 +2809,9 @@ function S.AppInbox()
     local applied = appDB("appApplied")
     local list = {}
 
-    for _, pk in ipairs(type(mine.packets) == "table" and mine.packets or {}) do
-        if type(pk) == "table" and S.ValidGUID(pk.from) and tonumber(pk.seq) and type(pk.data) == "string" and #pk.data <= S.APP_MAX and not pk.data:find("[^%w%(%)]") then
-            list[#list + 1] = pk
+    for _, packet in ipairs(type(mine.packets) == "table" and mine.packets or {}) do
+        if type(packet) == "table" and S.ValidGUID(packet.from) and tonumber(packet.seq) and type(packet.data) == "string" and #packet.data <= S.APP_MAX and not packet.data:find("[^%w%(%)]") then
+            list[#list + 1] = packet
         end
     end
 
@@ -2813,16 +2884,16 @@ function S.AppSendCodes()
 
     for g in pairs(sent) do if not offers[g] then sent[g] = nil end end   -- pairing made (or offer withdrawn)
     for g, off in pairs(offers) do
-        local p = S.PartnerByGUID(g)
-        local key = p and sharedKey(p)
+        local partner = S.PartnerByGUID(g)
+        local key = partner and sharedKey(partner)
 
-        if p and p.on and key and off.expires > now and p.app ~= false then   -- not to someone who told us they have no app
+        if partner and partner.on and key and off.expires > now and partner.app ~= false then   -- not to someone who told us they have no app
             local st = sent[g]
             local fresh = not st or st.code ~= off.code
             local retry = st and st.code == off.code and not st.acked and (st.tries or 0) < 5 and time() - (st.at or 0) >= 120
 
-            if (fresh or retry) and S.PartnerStatus(p.name) then
-                send("PCODE\t" .. off.code .. "\t" .. codeSig(key, off.code, me, g), { chan = "WHISPER", target = p.name, key = "W:" .. p.name })
+            if (fresh or retry) and S.PartnerStatus(partner.name) then
+                send("PCODE\t" .. off.code .. "\t" .. codeSig(key, off.code, me, g), { chan = "WHISPER", target = partner.name, key = "W:" .. partner.name })
 
                 sent[g] = { code = off.code, at = time(), acked = false, tries = (fresh and 1) or ((st.tries or 0) + 1) }
             end
@@ -2832,38 +2903,39 @@ end
 
 -- A code from a partner: only from someone on the list whose character id we know, signed with our key.
 function S.AppTakeCode(short, code, sig)
-    local p = S.FindPartner(short)
+    local partner = S.FindPartner(short)
     local me = S.MyGUID()
 
-    if not (p and me and S.ValidGUID(p.guid) and codeOK(code) and type(sig) == "string") then return false end
+    if not (partner and me and S.ValidGUID(partner.guid) and codeOK(code) and type(sig) == "string") then return false end
 
-    local key = sharedKey(p)
+    local key = sharedKey(partner)
 
-    if not key or sig ~= codeSig(key, code, p.guid, me) then return false end
+    if not key or sig ~= codeSig(key, code, partner.guid, me) then return false end
 
-    appDB("appCodes")[p.guid] = { code = code, time = S.ServerTime() }
+    appDB("appCodes")[partner.guid] = { code = code, time = S.ServerTime() }
 
-    send("PCOK\t" .. code, { chan = "WHISPER", target = p.name, key = "W:" .. p.name })
+    send("PCOK\t" .. code, { chan = "WHISPER", target = partner.name, key = "W:" .. partner.name })
 
     return true
 end
 
+-- A partner confirmed they got a pairing code: stop sending it
 function S.AppCodeAcked(short, code)
-    local p = S.FindPartner(short)
-    local st = p and p.guid and appDB("codeSent")[p.guid]
+    local partner = S.FindPartner(short)
+    local sent = partner and partner.guid and appDB("codeSent")[partner.guid]
 
-    if st and st.code == code then st.acked = true end
+    if sent and sent.code == code then sent.acked = true end
 end
 
 if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(30, function() if S.appRead then pcall(S.AppSendCodes) end end) end
 
 -- "missing key, resync" for this partner, if the app says so
 function S.AppProblem(name)
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if not (p and p.guid) then return nil end
+    if not (partner and partner.guid) then return nil end
 
-    return S.app.problems and S.app.problems[p.guid]
+    return S.app.problems and S.app.problems[partner.guid]
 end
 
 -- The app is installed but its SterlingQuestSync helper add-on isn't running in this session.
@@ -2872,6 +2944,7 @@ end
 -- this account, or there are pairings made in the app.
 S.APP_ADDON_MISSING = "The Companion add-on (Sterling Quest Sync Companion) isn't loaded. Exit WoW completely and start it again, then make sure it's ticked in AddOns at character select."
 
+-- Is the Companion app there but its add-on not loaded (unticked, or installed while the game ran)?
 function S.AppAddonMissing()
     if S.AppPresent() then return false end
 
@@ -2905,19 +2978,19 @@ end
 -- The app's "New copy, /reload to see it" can't happen in game: the app's new progress is only read at login
 -- and /reload, and everything there is loaded right then. Only the app can show it.
 function S.PartnerSyncState(name)
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if not p then return nil end
-    if not p.on then return "off", "Sync disabled", .55, .53, .48 end
-    if S.AppProblem(p.name) then return "key", S.Mark("warn") .. "Missing key, resync", .95, .77, .42 end
+    if not partner then return nil end
+    if not partner.on then return "off", "Sync disabled", .55, .53, .48 end
+    if S.AppProblem(partner.name) then return "key", S.Mark("warn") .. "Missing key, resync", .95, .77, .42 end
 
-    local pr = S.sync and S.sync.prog
-    local live = (S.pending and S.pending[p.name]) or (pr and pr.who == p.name and pr.t and GetTime() - pr.t < 6 and pr.got < pr.n)
+    local progress = S.sync and S.sync.prog
+    local live = (S.pending and S.pending[partner.name]) or (progress and progress.who == partner.name and progress.t and GetTime() - progress.t < 6 and progress.got < progress.n)
 
     if live then return "syncing", "Syncing...", .95, .77, .42 end
 
-    local have = S.LastSynced(p.name)
-    local paired = p.guid and S.AppPairKey and S.AppPairKey(p.guid)
+    local have = S.LastSynced(partner.name)
+    local paired = partner.guid and S.AppPairKey and S.AppPairKey(partner.guid)
 
     if paired then
         if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
@@ -2932,8 +3005,8 @@ function S.PartnerSyncState(name)
         return "never", "Not synced yet", .55, .53, .48
     end
 
-    if type(p.app) == "string" then return "pairsoon", "Pairs when you're both next online", .95, .77, .42 end
-    if p.app == false then return "noapp", "No Companion app", .62, .65, .72 end
+    if type(partner.app) == "string" then return "pairsoon", "Pairs when you're both next online", .95, .77, .42 end
+    if partner.app == false then return "noapp", "No Companion app", .62, .65, .72 end
     if have then return "current", S.Mark("good") .. "Up to date", .49, .89, .64 end
 
     return "unknown", "Not online with you yet", .84, .86, .91
@@ -2947,6 +3020,7 @@ S.found = {}
 -- fight, away, or reloaded) still works. Codes are random and only count from the person invited.
 S.INVITE_TTL = 24 * 3600
 
+-- Invites sent and not yet answered, dropping any older than a day
 function S.Invites()
     if not SterlingQuestDB then return {} end
 
@@ -2966,6 +3040,8 @@ local SRC_RANK = { party = 1, guild = 2, friend = 3, other = 4 }
 local function clean(v, n) return (tostring(v or ""):gsub("[|\t]", "")):sub(1, n or 16) end
 
 function S.IsBlocked(name) name = shortName(name); return name and SterlingQuestDB.blocked and SterlingQuestDB.blocked[name] and true or false end
+
+-- Hides a player from discovery and invites
 function S.Block(name)
     name = shortName(name); if not name then return end
     SterlingQuestDB.blocked = SterlingQuestDB.blocked or {}; SterlingQuestDB.blocked[name] = true
@@ -3001,12 +3077,14 @@ function S.Flooding(name)
     return false
 end
 
+-- Your version, class and level, as sent in HELLO and HI
 local function myInfo()
-    local _, cls = UnitClass("player")
+    local _, classToken = UnitClass("player")
 
-    return table.concat({ tostring(S.ADDON_VER), cls or "", tostring(UnitLevel("player") or 0) }, "\t")
+    return table.concat({ tostring(S.ADDON_VER), classToken or "", tostring(UnitLevel("player") or 0) }, "\t")
 end
 
+-- Is this person on your friends list and online?
 local function friendOnline(name)
     if type(C_FriendList) ~= "table" or not C_FriendList.GetNumFriends then return false end
 
@@ -3019,6 +3097,7 @@ local function friendOnline(name)
     return false
 end
 
+-- Is this person in your guild?
 local function inGuild(name)
     if not (IsInGuild and IsInGuild() and GetNumGuildMembers and GetGuildRosterInfo) then return false end
 
@@ -3027,6 +3106,7 @@ local function inGuild(name)
     return false
 end
 
+-- Where we know someone from: party, guild, friends or other
 local function srcOf(name, chan)
     if chan == "PARTY" or chan == "RAID" or chan == "INSTANCE_CHAT" or inGroup(name) then return "party" end
     if chan == "GUILD" or inGuild(name) then return "guild" end
@@ -3045,31 +3125,32 @@ if hooksecurefunc and SetItemRef then
     end)
 end
 
-local function noteFound(name, ver, cls, lvl, src)
+-- Remembers another Sterling user we found, for the Add window
+local function noteFound(name, ver, classToken, lvl, src)
     if S.IsBlocked(name) or S.IsMe(name) then return end
 
     local isNew = S.found[name] == nil
     local f = S.found[name] or {}
 
-    f.ver = clean(ver, 12); f.class = clean(cls, 16); f.level = tonumber(lvl); f.at = time()
+    f.ver = clean(ver, 12); f.class = clean(classToken, 16); f.level = tonumber(lvl); f.at = time()
 
     if not f.src or (SRC_RANK[src] or 9) < (SRC_RANK[f.src] or 9) then f.src = src end
 
     S.found[name] = f
     S.addonVers = S.addonVers or {}; S.addonVers[name] = f.ver
 
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
 
-    if p then
-        p.ver = f.ver
+    if partner then
+        partner.ver = f.ver
 
-        if f.class and f.class:match("^%u+$") then p.class = f.class end
-        if f.level and f.level >= 1 and f.level <= 100 then p.lvl = f.level end
+        if f.class and f.class:match("^%u+$") then partner.class = f.class end
+        if f.level and f.level >= 1 and f.level <= 100 then partner.lvl = f.level end
     end
 
     heard[name] = GetTime()
 
-    if isNew and f.src == "party" and not p and S.Opt("partyNote", true) then
+    if isNew and f.src == "party" and not partner and S.Opt("partyNote", true) then
         msg(name .. " in your party has Sterling. " .. S.InviteLink(name))
     end
 
@@ -3097,6 +3178,7 @@ end
 
 function S.FoundNewCount() local n = 0; for _, f in ipairs(S.FoundList()) do if not f.partner then n = n + 1 end end; return n end
 
+-- Tells a channel or person that you have Sterling
 function S.Hello(chan, target)
     if not S.Opt("discoverable", true) then return end
 
@@ -3105,6 +3187,7 @@ end
 
 local lastLook = 0
 
+-- Looks for other Sterling users in your guild, group and friends list
 function S.DiscoverNow(quiet)
     if GetTime() - lastLook < 30 then if not quiet then msg("Already looked in the last 30 seconds.") end return end
 
@@ -3124,6 +3207,7 @@ function S.DiscoverNow(quiet)
     end
 end
 
+-- The "X is online" chat line for partners, at most once per 10 minutes each
 function S.PartnerLoginNote(name)
     if not S.Opt("loginNote", true) or loginAt == 0 or GetTime() - loginAt < 30 then return end
     if S.ChatLevel("sync") < 1 then return end   -- Quiet chat detail: failures only
@@ -3136,6 +3220,7 @@ function S.PartnerLoginNote(name)
     msg((S.PartnerLabel and S.PartnerLabel(name) or name) .. " is online" .. (v and (" (Sterling v" .. v .. ")") or "") .. ".")
 end
 
+-- Invites someone to sync: they get a prompt to accept
 function S.Invite(name)
     name = shortName(name); if not name or name == "" or S.IsMe(name) then return end
 
@@ -3151,6 +3236,7 @@ function S.Invite(name)
     if S.UI_Update then S.UI_Update() end
 end
 
+-- Accepting an invite: adds them and tells them yes
 function S.AcceptInvite(name, code)
     if not S.AddPartner(name, true) then S.DeclineInvite(name, code) return end
 
@@ -3161,6 +3247,7 @@ function S.AcceptInvite(name, code)
     if S.UI_Update then S.UI_Update() end
 end
 
+-- Saying no to an invite (and staying quiet about them for the session)
 function S.DeclineInvite(name, code)
     declined[name] = true
 
@@ -3172,11 +3259,11 @@ function S.OnDiscovery(short, text, chan)
     local kind, rest = text:match("^(%u+)\t?(.*)$")
 
     if kind == "HELLO" or kind == "HI" then
-        local ver, cls, lvl = rest:match("^([%d%.]+)\t(%u*)\t(%d+)$")
+        local ver, classToken, lvl = rest:match("^([%d%.]+)\t(%u*)\t(%d+)$")
 
         if not ver then return true end
 
-        noteFound(short, ver, cls, lvl, srcOf(short, chan))
+        noteFound(short, ver, classToken, lvl, srcOf(short, chan))
 
         if S.FindPartner(short) and kind == "HELLO" and chan ~= "PARTY" and chan ~= "RAID" then
             -- a guild hello goes out every 15 minutes; only the first one after a real absence is news
@@ -3233,6 +3320,7 @@ end
 -- Say hello: once at login (guild and online friends), and to the group whenever someone new joins.
 local helloPending = false
 
+-- Says hello to anyone new who joined your group
 function S.GroupHello()
     if not (IsInGroup and IsInGroup()) or not S.Opt("discoverable", true) then return end
 
@@ -3252,6 +3340,7 @@ function S.GroupHello()
     end
 end
 
+-- The hellos sent once after login: guild, online friends
 function S.LoginHello()
     if loginAt ~= 0 then return end
 
@@ -3260,7 +3349,7 @@ function S.LoginHello()
     C_Timer.After(12, function() lastLook = 0; S.DiscoverNow(true) end)
 
     -- partners already online when we log in aren't "logging in": don't announce them
-    C_Timer.After(28, function() for _, p in ipairs(S.Partners()) do if S.PartnerOnline(p.name) then loginNoted[p.name] = GetTime() end end end)
+    C_Timer.After(28, function() for _, partner in ipairs(S.Partners()) do if S.PartnerOnline(partner.name) then loginNoted[partner.name] = GetTime() end end end)
 
     if C_Timer.NewTicker then C_Timer.NewTicker(900, function() if IsInGuild and IsInGuild() and S.Opt("findGuild", true) then S.Hello("GUILD") end end) end
 end
@@ -3270,6 +3359,7 @@ end
 -- their next message; a different name = dropped. So nobody can claim someone else's id.
 S.pendingGID = {}
 
+-- Does this character id belong to this name? (nil when the game doesn't know the id yet)
 function S.GIDMatches(short, gid)
     if type(GetPlayerInfoByGUID) ~= "function" then return nil end
 
@@ -3280,10 +3370,11 @@ function S.GIDMatches(short, gid)
     return sameName(name, short)
 end
 
+-- Keeps a partner's character id once the game confirms it's really theirs
 function S.TakeGID(short, gid)
-    local p = S.FindPartner(short)
+    local partner = S.FindPartner(short)
 
-    if not (p and S.ValidGUID(gid) and gid ~= S.MyGUID()) then S.pendingGID[short] = nil; return false end
+    if not (partner and S.ValidGUID(gid) and gid ~= S.MyGUID()) then S.pendingGID[short] = nil; return false end
 
     local m = S.GIDMatches(short, gid)
 
@@ -3292,11 +3383,11 @@ function S.TakeGID(short, gid)
     S.pendingGID[short] = nil
 
     if not m then dbg("sync", "ignored a character id from " .. short .. ": the game says it belongs to someone else"); return false end
-    if p.guid ~= gid then
+    if partner.guid ~= gid then
         -- the same id on another entry (a renamed character) moves here
-        for _, o in ipairs(S.Partners()) do if o ~= p and o.guid == gid then o.guid = nil end end
+        for _, otherPartner in ipairs(S.Partners()) do if otherPartner ~= partner and otherPartner.guid == gid then otherPartner.guid = nil end end
 
-        p.guid = gid
+        partner.guid = gid
     end
 
     if SterlingQuestDB.removedG then SterlingQuestDB.removedG[gid] = nil end
@@ -3304,6 +3395,7 @@ function S.TakeGID(short, gid)
     return true
 end
 
+-- Every Sterling message from another player comes in here
 local function onAddonMessage(prefix, text, chan, sender)
     if prefix ~= S.PREFIX then return end
     if S.testMode then return end   -- screenshot mode: nothing is taken in either
@@ -3401,6 +3493,7 @@ local function onAddonMessage(prefix, text, chan, sender)
 
     S.sync.vers = S.sync.vers or {}
 
+    -- Where to answer the sender: the group when grouped, else a whisper
     local function tgtFor()
         local inG = useGroup(short)
 
@@ -3462,7 +3555,7 @@ local function onAddonMessage(prefix, text, chan, sender)
         aver = aver:sub(1, 12)
         S.addonVers = S.addonVers or {}; S.addonVers[short] = aver
 
-        local p = S.FindPartner(short); if p then p.ver = aver end
+        local partner = S.FindPartner(short); if partner then partner.ver = aver end
 
         S.UI_Update()
 
@@ -3474,10 +3567,10 @@ local function onAddonMessage(prefix, text, chan, sender)
     if khalf then
         -- their half of the offline sync key; only ever taken from a whisper by someone on the Sync list
         if chan == "WHISPER" then
-            local p = S.FindPartner(short)
+            local partner = S.FindPartner(short)
 
-            if p then
-                p.k2 = khalf:sub(1, 32); p.kok = true
+            if partner then
+                partner.k2 = khalf:sub(1, 32); partner.kok = true
 
                 S.SendKey(short)   -- once per session, so two copies can't ping-pong
 
@@ -3491,14 +3584,14 @@ local function onAddonMessage(prefix, text, chan, sender)
     local clvl, ccls, crace = text:match("^CHAR\t(%d+)\t(%u*)\t([^\t|]*)$")
 
     if clvl then
-        local p = S.FindPartner(short)
+        local partner = S.FindPartner(short)
 
-        if p then
+        if partner then
             clvl = tonumber(clvl)
 
-            if clvl and clvl >= 1 and clvl <= 100 then p.lvl = clvl end
-            if ccls ~= "" and #ccls <= 16 then p.class = ccls end
-            if crace ~= "" and #crace <= 24 then p.race = crace end
+            if clvl and clvl >= 1 and clvl <= 100 then partner.lvl = clvl end
+            if ccls ~= "" and #ccls <= 16 then partner.class = ccls end
+            if crace ~= "" and #crace <= 24 then partner.race = crace end
         end
 
         return
@@ -3508,10 +3601,10 @@ local function onAddonMessage(prefix, text, chan, sender)
 
     if appv then
         -- what a partner told us about their Companion app; kept until they tell us otherwise
-        local p = S.FindPartner(short)
+        local partner = S.FindPartner(short)
 
-        if p then
-            if appv == "" then p.app = false elseif appVerOK(appv) then p.app = appv end
+        if partner then
+            if appv == "" then partner.app = false elseif appVerOK(appv) then partner.app = appv end
         end
 
         return
@@ -3654,10 +3747,10 @@ local function onAddonMessage(prefix, text, chan, sender)
     end
 
     -- data from a sender whose version doesn't match ours is ignored; unknown versions get asked
-    local kv = S.sync.vers[short]
+    local theirProto = S.sync.vers[short]
 
-    if kv == nil then dbg("sync", "ignored from " .. short .. ": don't know their version yet, asking"); S.RequestPartner(short); return end
-    if kv ~= S.VERSION then dbg("sync", "|cffff9b92ignored|r from " .. short .. ": their sync protocol " .. tostring(kv) .. ", ours " .. S.VERSION); return end
+    if theirProto == nil then dbg("sync", "ignored from " .. short .. ": don't know their version yet, asking"); S.RequestPartner(short); return end
+    if theirProto ~= S.VERSION then dbg("sync", "|cffff9b92ignored|r from " .. short .. ": their sync protocol " .. tostring(theirProto) .. ", ours " .. S.VERSION); return end
 
     local kind, id, i, n, chunk = text:match("^(%u+)\t(%d+)\t(%d+)\t(%d+)\t(.*)$")
 
@@ -3702,7 +3795,7 @@ local function onAddonMessage(prefix, text, chan, sender)
         if snap then
             S.sync.snapsIn = S.sync.snapsIn + 1; S.sync.lastSnapIn = time(); bump(short, "snapsIn", 1, "lastSnapIn")
 
-            do local pp = S.FindPartner(short); if pp then pp.seen = S.ServerTime() end end   -- last live sync, for the app
+            do local partner = S.FindPartner(short); if partner then partner.seen = S.ServerTime() end end   -- last live sync, for the app
 
             if snap.seq and snap.seq > 0 then send("ACK\t" .. snap.seq, tgtFor()); dbg("sync", "confirming " .. short .. "'s full copy #" .. snap.seq) end
             if first then say("sync", 1, "Live sync with " .. S.PartnerLabel(short) .. " is on.") end
@@ -3735,7 +3828,7 @@ local function onAddonMessage(prefix, text, chan, sender)
 
         send("ACK\t" .. a2, tgtFor()); dbg("sync", "applied and confirming " .. short .. "'s change #" .. tostring(a2))
 
-        do local pp = S.FindPartner(short); if pp then pp.seen = S.ServerTime() end end   -- last live sync, for the app
+        do local partner = S.FindPartner(short); if partner then partner.seen = S.ServerTime() end end   -- last live sync, for the app
 
         if S.OnPartnerData then S.OnPartnerData(short) end
 
@@ -3762,7 +3855,7 @@ if ChatFrame_AddMessageEventFilter then
     ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, text)
         if not (SterlingQuestDB and text and text:find("currently playing", 1, true)) then return end
 
-        for _, p in ipairs(SterlingQuestDB.partners or {}) do if text:find(p.name, 1, true) then return true end end
+        for _, partner in ipairs(SterlingQuestDB.partners or {}) do if text:find(partner.name, 1, true) then return true end end
     end)
 end
 
@@ -3773,14 +3866,16 @@ S.legs, S.steps = {}, {}
 
 local lastIndex
 
+-- Numbers every step of every leg, so steps can be found by index
 local function indexSteps()
     S.steps = {}
 
     for _, leg in ipairs(S.legs) do
-        for _, st in ipairs(leg.steps) do st.leg = leg; S.steps[#S.steps + 1] = st; st.index = #S.steps end
+        for _, step in ipairs(leg.steps) do step.leg = leg; S.steps[#S.steps + 1] = step; step.index = #S.steps end
     end
 end
 
+-- Replaces the path with new legs and moves to the first open step
 function S.SetLegs(legs)
     S.legs = legs or {}
 
@@ -3792,6 +3887,7 @@ function S.SetLegs(legs)
     S.Recalc(false)
 end
 
+-- A quest's objectives with their text and whether each is finished
 function S.ObjectiveList(qid, logIndex)
     local objs
 
@@ -3811,14 +3907,15 @@ function S.ObjectiveList(qid, logIndex)
 end
 
 local function inLog(qid) return S.log[qid] ~= nil end
-local function logComplete(qid) local q = S.log[qid]; return q and q.complete end
+local function logComplete(qid) local quest = S.log[qid]; return quest and quest.complete end
 
+-- Is this objective finished in your quest log?
 local function objectiveDone(qid, text)
     if not (qid and text) then return nil end
 
-    local q = S.log[qid]
+    local quest = S.log[qid]
 
-    if not q then return nil end
+    if not quest then return nil end
 
     local objs
 
@@ -3826,11 +3923,11 @@ local function objectiveDone(qid, text)
         local ok, o = pcall(C_QuestLog.GetQuestObjectives, qid); if ok then objs = o end
     end
 
-    if not objs and GetNumQuestLeaderBoards and q.index then
+    if not objs and GetNumQuestLeaderBoards and quest.index then
         objs = {}
 
-        for i = 1, (GetNumQuestLeaderBoards(q.index) or 0) do
-            local t, _, fin = GetQuestLogLeaderBoard(i, q.index); objs[i] = { text = t, finished = fin }
+        for i = 1, (GetNumQuestLeaderBoards(quest.index) or 0) do
+            local t, _, fin = GetQuestLogLeaderBoard(i, quest.index); objs[i] = { text = t, finished = fin }
         end
     end
 
@@ -3838,52 +3935,54 @@ local function objectiveDone(qid, text)
 
     local want = text:lower():gsub("%s*%d+%s*/%s*%d+%s*$", ""):gsub("^%s+", "")
 
-    for _, o in ipairs(objs) do
-        local have = (o.text or ""):lower():gsub("%s*%d+%s*/%s*%d+%s*$", ""):gsub(":%s*$", "")
+    for _, objective in ipairs(objs) do
+        local have = (objective.text or ""):lower():gsub("%s*%d+%s*/%s*%d+%s*$", ""):gsub(":%s*$", "")
 
-        if have ~= "" and (have:find(want, 1, true) or want:find(have, 1, true)) then return o.finished and true or false end
+        if have ~= "" and (have:find(want, 1, true) or want:find(have, 1, true)) then return objective.finished and true or false end
     end
 end
 
-local function nearby(st)
-    if not (st.map and st.x) then return false end
+-- Are you standing close to this step's spot?
+local function nearby(step)
+    if not (step.map and step.x) then return false end
 
     local map, x, y = S.PlayerPos()
 
-    if map ~= st.map then return false end
+    if map ~= step.map then return false end
 
-    local dx, dy = x - st.x, y - st.y
+    local dx, dy = x - step.x, y - step.y
 
     return (dx * dx + dy * dy) < 1.0
 end
 
-function S.StepSatisfied(st, i)
-    local k = st.kind
+-- Is this step already done (quest turned in, picked up, objective finished, place reached)?
+function S.StepSatisfied(step, i)
+    local k = step.kind
 
-    if k == "turnin" then return S.IsFlaggedDone(st.qid)
-    elseif k == "pickup" then return inLog(st.qid) or S.IsFlaggedDone(st.qid)
-    elseif k == "deliver" then return S.IsFlaggedDone(st.qid)
-    elseif k == "do" then return logComplete(st.qid) or S.IsFlaggedDone(st.qid)
+    if k == "turnin" then return S.IsFlaggedDone(step.qid)
+    elseif k == "pickup" then return inLog(step.qid) or S.IsFlaggedDone(step.qid)
+    elseif k == "deliver" then return S.IsFlaggedDone(step.qid)
+    elseif k == "do" then return logComplete(step.qid) or S.IsFlaggedDone(step.qid)
     elseif k == "objective" then
-        local v = objectiveDone(st.qid, st.text)
+        local v = objectiveDone(step.qid, step.text)
 
         if v ~= nil then return v end
 
-        return logComplete(st.qid) or S.IsFlaggedDone(st.qid)
-    elseif k == "ding" then return (UnitLevel("player") or 0) >= st.level
-    elseif k == "skip" then return not inLog(st.qid)
+        return logComplete(step.qid) or S.IsFlaggedDone(step.qid)
+    elseif k == "ding" then return (UnitLevel("player") or 0) >= step.level
+    elseif k == "skip" then return not inLog(step.qid)
     elseif k == "flight" or k == "ride" or k == "hearth" then
         -- done once you're at the destination (never just for standing at the flight master or dock)
-        local dest = { map = st.dmap or st.map, x = st.dx or st.x, y = st.dy or st.y }
+        local dest = { map = step.dmap or step.map, x = step.dx or step.x, y = step.dy or step.y }
 
-        if st.subzone and ((GetSubZoneText() or "") == st.subzone) then return true end
+        if step.subzone and ((GetSubZoneText() or "") == step.subzone) then return true end
         if nearby(dest) then return true end
         if k ~= "flight" then local here = S.PlayerPos(); if here and here == dest.map then return true end end
 
         for j = i + 1, math.min(i + 3, #S.steps) do
-            local nx = S.steps[j]
+            local nextStep = S.steps[j]
 
-            if nx.qid and S.StepSatisfied(nx, j) then return true end
+            if nextStep.qid and S.StepSatisfied(nextStep, j) then return true end
         end
 
         return false
@@ -3891,16 +3990,16 @@ function S.StepSatisfied(st, i)
         if k == "dungeon" and IsInInstance and IsInInstance() then
             local name = GetInstanceInfo and GetInstanceInfo()
 
-            if name and st.text and name == st.text then return true end
+            if name and step.text and name == step.text then return true end
         end
 
-        if st.subzone and ((GetSubZoneText() or "") == st.subzone or (GetZoneText() or "") == st.subzone) then return true end
-        if nearby(st) then return true end
+        if step.subzone and ((GetSubZoneText() or "") == step.subzone or (GetZoneText() or "") == step.subzone) then return true end
+        if nearby(step) then return true end
 
         for j = i + 1, math.min(i + 3, #S.steps) do
-            local nx = S.steps[j]
+            local nextStep = S.steps[j]
 
-            if nx.qid and S.StepSatisfied(nx, j) then return true end
+            if nextStep.qid and S.StepSatisfied(nextStep, j) then return true end
         end
 
         return false
@@ -3909,9 +4008,10 @@ function S.StepSatisfied(st, i)
     return false
 end
 
+-- The first step that isn't done yet
 function S.CurrentIndex()
-    for i, st in ipairs(S.steps) do
-        if not SterlingQuestDB.manual[i] and not S.StepSatisfied(st, i) then return i end
+    for i, step in ipairs(S.steps) do
+        if not SterlingQuestDB.manual[i] and not S.StepSatisfied(step, i) then return i end
     end
 
     return #S.steps + 1
@@ -3920,6 +4020,7 @@ end
 -- Waypoints
 local wpUID
 
+-- Removes our TomTom arrow
 function S.ClearWaypoint()
     if S.testMode then return end
     if wpUID and TomTom and TomTom.RemoveWaypoint then pcall(TomTom.RemoveWaypoint, TomTom, wpUID) end
@@ -3927,31 +4028,32 @@ function S.ClearWaypoint()
     wpUID = nil
 end
 
-function S.SetWaypoint(st)
+-- Points the TomTom arrow at a step
+function S.SetWaypoint(step)
     if S.testMode then return end   -- screenshot mode: TomTom keeps your real arrow
 
     S.ClearWaypoint()
 
-    if not (st and st.x and st.y and st.map) then return end
+    if not (step and step.x and step.y and step.map) then return end
 
-    local title = S.StepLabel(st)
+    local title = S.StepLabel(step)
 
     -- pick up and turn in: the giver first, then (once it's in your log) the turn-in NPC
-    if st.kind == "deliver" and st.tmap and inLog(st.qid) then st = { map = st.tmap, x = st.tx, y = st.ty } end
+    if step.kind == "deliver" and step.tmap and inLog(step.qid) then step = { map = step.tmap, x = step.tx, y = step.ty } end
 
     -- once you're in the air (or for a hearth), point at where you're going instead of where you left from
-    if st.dmap and st.dx and ((UnitOnTaxi and UnitOnTaxi("player")) or st.kind == "hearth") then
-        st = { map = st.dmap, x = st.dx, y = st.dy }
+    if step.dmap and step.dx and ((UnitOnTaxi and UnitOnTaxi("player")) or step.kind == "hearth") then
+        step = { map = step.dmap, x = step.dx, y = step.dy }
     end
 
     if TomTom and TomTom.AddWaypoint then
-        local ok, uid = pcall(TomTom.AddWaypoint, TomTom, st.map, st.x / 100, st.y / 100,
+        local ok, uid = pcall(TomTom.AddWaypoint, TomTom, step.map, step.x / 100, step.y / 100,
             { title = title, persistent = false, minimap = true, world = true, crazy = true, from = "Sterling Quest Sync" })
         if ok and uid then wpUID = uid; return end
     end
 
     if C_Map and C_Map.SetUserWaypoint and UiMapPoint then
-        local ok, pt = pcall(UiMapPoint.CreateFromCoordinates, st.map, st.x / 100, st.y / 100)
+        local ok, pt = pcall(UiMapPoint.CreateFromCoordinates, step.map, step.x / 100, step.y / 100)
 
         if ok and pt then
             pcall(C_Map.SetUserWaypoint, pt)
@@ -3963,25 +4065,27 @@ end
 
 S.KIND_LABEL = { turnin = "Turn in", pickup = "Pick up", deliver = "Pick up and turn in", ["do"] = "Do", objective = "Objective", skip = "Skip",
                  travel = "Travel", flight = "Flight", ride = "Ride", hearth = "Hearth", dungeon = "Dungeon", ding = "Level", note = "Note" }
-function S.StepLabel(st)
-    if not st then return "all caught up" end
+-- The step's text for chat and the Path card
+function S.StepLabel(step)
+    if not step then return "all caught up" end
 
-    local k = st.kind
+    local k = step.kind
 
-    if k == "ding" then return "Reach level " .. st.level end
-    if k == "objective" then return st.text and (st.text .. " (" .. (st.quest or "") .. ")") or ("Objective for " .. (st.quest or "a quest")) end
-    if k == "dungeon" then return "Ran " .. (st.text or "a dungeon") end
-    if k == "note" then return "Note: " .. (st.text or "") end
-    if k == "flight" then return st.from and ("Fly from " .. st.from .. " to " .. (st.text or "")) or ("Fly to " .. (st.text or "")) end
-    if k == "ride" then return "Boat or zeppelin" .. (st.from and (" from " .. st.from) or "") .. " to " .. (st.text or "") end
-    if k == "hearth" then return ((st.from == "Hearthstone" or not st.from) and "Hearth to " or (st.from .. " to ")) .. (st.text or "") end
-    if k == "travel" then return "Travel: " .. (st.text or st.subzone or "") end
+    if k == "ding" then return "Reach level " .. step.level end
+    if k == "objective" then return step.text and (step.text .. " (" .. (step.quest or "") .. ")") or ("Objective for " .. (step.quest or "a quest")) end
+    if k == "dungeon" then return "Ran " .. (step.text or "a dungeon") end
+    if k == "note" then return "Note: " .. (step.text or "") end
+    if k == "flight" then return step.from and ("Fly from " .. step.from .. " to " .. (step.text or "")) or ("Fly to " .. (step.text or "")) end
+    if k == "ride" then return "Boat or zeppelin" .. (step.from and (" from " .. step.from) or "") .. " to " .. (step.text or "") end
+    if k == "hearth" then return ((step.from == "Hearthstone" or not step.from) and "Hearth to " or (step.from .. " to ")) .. (step.text or "") end
+    if k == "travel" then return "Travel: " .. (step.text or step.subzone or "") end
 
-    return (S.KIND_LABEL[k] or k) .. " " .. (st.quest or "") .. (st.npc and (" (" .. st.npc .. ")") or "")
+    return (S.KIND_LABEL[k] or k) .. " " .. (step.quest or "") .. (step.npc and (" (" .. step.npc .. ")") or "")
 end
 
 local lastPhase = false
 
+-- Reads the quest log again and moves the path on when steps got done
 function S.Recalc(announce)
     if not S.Safe("quest log", S.Refresh) then return end
     if S.RecordTick then S.Safe("recording", S.RecordTick, "questlog") end
@@ -3997,12 +4101,12 @@ function S.Recalc(announce)
     lastPhase = phase
 
     if i ~= lastIndex then
-        local st = S.steps[i]
+        local step = S.steps[i]
 
-        if SterlingQuestDB.path then S.Safe("waypoint", S.SetWaypoint, st) end
+        if SterlingQuestDB.path then S.Safe("waypoint", S.SetWaypoint, step) end
         if announce and lastIndex and SterlingQuestDB.path then
             if S.Opt("sound", true) and PlaySound then pcall(PlaySound, 3175) end
-            if S.Opt("chat", true) then if st then msg("Next: " .. S.StepLabel(st)) else msg("You're caught up. Path complete.") end end
+            if S.Opt("chat", true) then if step then msg("Next: " .. S.StepLabel(step)) else msg("You're caught up. Path complete.") end end
         end
 
         lastIndex = i
@@ -4027,6 +4131,7 @@ S.WORKS_WITH =
         chat = "TomTom isn't installed, so the next step is marked with the game's own map pin instead of an arrow." },
 }
 
+-- Is another add-on Sterling works with (Questie, TomTom...) installed?
 function S.HasAddon(key)
     if key == "Questie" then return type(rawget(_G, "QuestieLoader")) == "table" end
     if key == "TomTom" then return type(rawget(_G, "TomTom")) == "table" end
@@ -4065,17 +4170,17 @@ function S.ResetSettings()
     msg("Settings are back to their defaults. Your partners, quest data and sessions are untouched.")
 end
 
-local f = CreateFrame("Frame")
+local frame = CreateFrame("Frame")
 
 for _, ev in ipairs({ "ADDON_LOADED", "PLAYER_ENTERING_WORLD", "PLAYER_LEAVING_WORLD", "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_TURNED_IN",
     "QUEST_REMOVED", "PLAYER_LEVEL_UP", "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED_INDOORS", "PLAYER_CONTROL_GAINED",
     "PLAYER_CONTROL_LOST", "PLAYER_DEAD", "CHAT_MSG_ADDON", "CHAT_MSG_SYSTEM", "GROUP_ROSTER_UPDATE", "FRIENDLIST_UPDATE", "GUILD_ROSTER_UPDATE", "PLAYER_LOGOUT" }) do
-    f:RegisterEvent(ev)
+    frame:RegisterEvent(ev)
 end
 
 local throttle
 
-f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
+frame:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
     if ev == "ADDON_LOADED" then
         if a1 ~= ADDON then return end
 
@@ -4113,7 +4218,7 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
 
         SterlingQuestDB.partnerName, SterlingQuestDB.partnerExplicit, SterlingQuestDB.partnerSnap = nil, nil, nil
 
-        for n, pr in pairs(SterlingQuestDB.profiles or {}) do S.profiles[n] = pr end
+        for n, profile in pairs(SterlingQuestDB.profiles or {}) do S.profiles[n] = profile end
         for name in pairs(SterlingQuestDB.snaps) do
             local parsed = S.ParseSnapshot(SterlingQuestDB.snaps[name])
 
@@ -4135,7 +4240,7 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
         end
 
         -- every partner gets their half of the offline sync key; nobody is dropped for not having one yet
-        for _, p in ipairs(SterlingQuestDB.partners) do p.k1 = p.k1 or newKey() end
+        for _, partner in ipairs(SterlingQuestDB.partners) do partner.k1 = partner.k1 or newKey() end
 
         S.SelectPartner(nil)
 
@@ -4154,7 +4259,7 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
     if ev == "PLAYER_LOGOUT" then if S.testMode then S.TestModeOff(true) end; S.Safe("saving your progress for the Companion app", S.AppOutbox); S.RecordFlush(); if S.PackFlush then S.Safe("packing", S.PackFlush) end return end
     if S.RecordEvent then S.Safe("recording", S.RecordEvent, ev, a1, a2) end
     if (ev == "PLAYER_CONTROL_LOST" or ev == "PLAYER_CONTROL_GAINED") and SterlingQuestDB.path then
-        C_Timer.After(1.5, function() local st = S.steps[S.CurrentIndex()]; if st and st.dmap then S.Safe("waypoint", S.SetWaypoint, st) end end)
+        C_Timer.After(1.5, function() local step = S.steps[S.CurrentIndex()]; if step and step.dmap then S.Safe("waypoint", S.SetWaypoint, step) end end)
     end
 
     if ev == "PLAYER_ENTERING_WORLD" then
@@ -4165,14 +4270,14 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
 
             -- your name is certain by now (it can be missing while the addon first loads): drop yourself if listed
             for i = #S.Partners(), 1, -1 do
-                local p = S.Partners()[i]
+                local partner = S.Partners()[i]
 
-                if S.LooksLikeMe(p.name) then
-                    S.LearnMyName(p.name)
+                if S.LooksLikeMe(partner.name) then
+                    S.LearnMyName(partner.name)
 
-                    S.snaps[p.name] = nil; if SterlingQuestDB.snaps then SterlingQuestDB.snaps[p.name] = nil end; table.remove(S.Partners(), i)
+                    S.snaps[partner.name] = nil; if SterlingQuestDB.snaps then SterlingQuestDB.snaps[partner.name] = nil end; table.remove(S.Partners(), i)
 
-                    msg("Took yourself off the Sync list (" .. p.name .. ").")
+                    msg("Took yourself off the Sync list (" .. partner.name .. ").")
                 end
             end
 
@@ -4207,14 +4312,14 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
 
         local now = {}
 
-        for _, p in ipairs(S.Partners()) do
-            if p.on and inGroup(p.name) then
-                now[p.name] = true
+        for _, partner in ipairs(S.Partners()) do
+            if partner.on and inGroup(partner.name) then
+                now[partner.name] = true
 
-                if not first and not S.inGroupWith[p.name] then
-                    S.AutoSync(p.name, "joined the group")
+                if not first and not S.inGroupWith[partner.name] then
+                    S.AutoSync(partner.name, "joined the group")
 
-                    if S.OnPartnerJoined then S.Safe("group hints", S.OnPartnerJoined, p.name) end
+                    if S.OnPartnerJoined then S.Safe("group hints", S.OnPartnerJoined, partner.name) end
                 end
             end
         end
@@ -4227,27 +4332,27 @@ f:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4)
     end
 
     if ev == "FRIENDLIST_UPDATE" or ev == "GUILD_ROSTER_UPDATE" then
-        for _, p in ipairs(S.Partners()) do
-            if p.on then
+        for _, partner in ipairs(S.Partners()) do
+            if partner.on then
                 -- The friends list and guild roster come back empty for a moment now and then. Treating every
                 -- blip as "went offline, came back" used to throw away what we knew they hold and send the whole
                 -- log again. Now: what they hold is kept (their own request sorts out anything they missed), and
                 -- they only count as having come online after three minutes of looking offline.
                 -- Only a list that actually shows them offline counts (not finding them at all is "can't tell"),
                 -- and never while we've heard from them in the last 10 minutes.
-                local on, src = S.PartnerStatus(p.name)
-                local lh = S.LastHeard(p.name)
+                local online, src = S.PartnerStatus(partner.name)
+                local lh = S.LastHeard(partner.name)
 
-                if not on and (src == nil or (lh and lh < 600)) then
+                if not online and (src == nil or (lh and lh < 600)) then
                     -- can't tell, or they were talking to us a moment ago: leave things as they are
-                elseif on then
-                    S.offSince[p.name] = nil
+                elseif online then
+                    S.offSince[partner.name] = nil
 
-                    if not pinged[p.name] then pinged[p.name] = true; S.RequestPartner(p.name); S.ScheduleBroadcast(); S.AutoSync(p.name, "came online"); S.PartnerLoginNote(p.name) end
+                    if not pinged[partner.name] then pinged[partner.name] = true; S.RequestPartner(partner.name); S.ScheduleBroadcast(); S.AutoSync(partner.name, "came online"); S.PartnerLoginNote(partner.name) end
                 else
-                    S.offSince[p.name] = S.offSince[p.name] or GetTime()
+                    S.offSince[partner.name] = S.offSince[partner.name] or GetTime()
 
-                    if GetTime() - S.offSince[p.name] > 180 then pinged[p.name] = nil end
+                    if GetTime() - S.offSince[partner.name] > 180 then pinged[partner.name] = nil end
                 end
             end
         end
@@ -4319,14 +4424,15 @@ local function stvMap() local m = S.PlayerPos and S.PlayerPos(); return m or 143
 local function fakeSessions(now)
     local map = stvMap()
 
+    -- Test mode: one made-up session with its events and a trail
     local function sess(id, name, char, startAgo, mins, lvl0, lvl1, evs, imported)
         local t0 = now - startAgo
         local s = { id = id, name = name, start = t0, stop = t0 + mins * 60, char = char, realm = "", lvl0 = lvl0, lvl1 = lvl1,
                     events = {}, trail = {}, zones = { ["Stranglethorn Vale"] = true }, race = "Troll", color = "teal", display = char:match("^(%S+)"), imported = imported }
-        for i, e in ipairs(evs) do
+        for i, event in ipairs(evs) do
             local ev = { t = t0 + i * (mins * 60 / (#evs + 1)), map = map, x = 30 + (i * 7) % 25, y = 20 + (i * 11) % 40 }
 
-            for k, v in pairs(e) do ev[k] = v end
+            for k, v in pairs(event) do ev[k] = v end
 
             s.events[#s.events + 1] = ev
         end
@@ -4360,10 +4466,11 @@ end
 
 local real = nil
 
+-- Test mode: a made-up partner's quest log in the same shape as a real one
 local function fakeSnap(f, now)
     local entries = {}
 
-    for _, q in ipairs(f.log) do entries[#entries + 1] = q[1] .. "." .. q[2] .. "." .. q[3] .. "." .. (q[4] or "") end
+    for _, quest in ipairs(f.log) do entries[#entries + 1] = quest[1] .. "." .. quest[2] .. "." .. quest[3] .. "." .. (quest[4] or "") end
 
     local str = table.concat({ "STR3", f.name, "", f.level, table.concat(entries, ";"), table.concat(f.done, ","), now - f.ago, "=", 1, "", "o" }, "^")
     local snap = S.ParseSnapshot(str)
@@ -4373,6 +4480,7 @@ local function fakeSnap(f, now)
     return snap
 end
 
+-- Test mode on: swaps every saved table for a copy filled with made-up data
 function S.TestModeOn()
     if S.testMode then return end
     if S.IsRecording and S.IsRecording() then msg("Stop the recording first (test mode would lose it).") return end
@@ -4398,31 +4506,31 @@ function S.TestModeOn()
     local picks = S.TestQuestPicks and S.TestQuestPicks({ [33] = true, [400] = false, [405] = false, [45] = false, [15] = false,
                                                           [3] = false, [8] = false, [267] = false, [406] = false }, 6, 44) or {}
     for i, f0 in ipairs(FAKE) do
-        local f = f0
+        local fake = f0
 
         if i == 1 then
-            f = {}
+            fake = {}
 
-            for k, v in pairs(f0) do f[k] = v end
+            for k, v in pairs(f0) do fake[k] = v end
 
             local done, seen = {}, {}
 
-            for _, q in ipairs(f0.done) do done[#done + 1] = q; seen[q] = true end
+            for _, doneQid in ipairs(f0.done) do done[#done + 1] = doneQid; seen[doneQid] = true end
             for _, list in pairs(picks) do for _, q in ipairs(list) do if not seen[q] then done[#done + 1] = q; seen[q] = true end end end
 
-            f.done = done
+            fake.done = done
         end
 
         local guid = ("Player-6800-%08X"):format(0x5E570000 + i)
 
-        db.partners[#db.partners + 1] = { name = f.name, on = true, show = true, guid = guid, lvl = f.level, class = f.class, race = f.race,
-                                          ver = f.ver == "now" and tostring(S.ADDON_VER) or f.ver }
-        if f.nick then db.nicknames[f.name] = f.nick end
-        if f.fav then favs[f.fav] = guid end
+        db.partners[#db.partners + 1] = { name = fake.name, on = true, show = true, guid = guid, lvl = fake.level, class = fake.class, race = fake.race,
+                                          ver = fake.ver == "now" and tostring(S.ADDON_VER) or fake.ver }
+        if fake.nick then db.nicknames[fake.name] = fake.nick end
+        if fake.fav then favs[fake.fav] = guid end
 
-        snaps[f.name] = fakeSnap(f, now)
-        profiles[f.name] = { name = f.name:match("^(%S+)"), race = f.race, color = f.color }
-        vers[f.name] = f.ver == "now" and tostring(S.ADDON_VER) or f.ver
+        snaps[fake.name] = fakeSnap(fake, now)
+        profiles[fake.name] = { name = fake.name:match("^(%S+)"), race = fake.race, color = fake.color }
+        vers[fake.name] = fake.ver == "now" and tostring(S.ADDON_VER) or fake.ver
     end
 
     for i = 1, #FAKE do if favs[i] then db.favs[#db.favs + 1] = favs[i] end end
@@ -4466,6 +4574,7 @@ function S.TestModeOn()
 
     for _, f in ipairs(FAKE) do byName[f.name] = f end
 
+    -- Test mode: made-up partners are online or not as the cast says
     S.PartnerStatus = function(name)
         local f = byName[name]
 
@@ -4482,14 +4591,14 @@ function S.TestModeOn()
     for _, q in ipairs(FAKE_MYDONE) do mydone[q] = true end
 
     S.IsFlaggedDone = function(qid) return qid ~= nil and mydone[qid] == true end
-    S.ReadCompleted = function() local t = {}; for q in pairs(mydone) do t[q] = true end; return t end
+    S.ReadCompleted = function() local t = {}; for qid in pairs(mydone) do t[qid] = true end; return t end
 
     -- titles from your real log stay known (only in the copy), so tooltips on those quests still get status lines
     db.names = db.names or {}
 
     local okLog, realLog = pcall(real.ReadLog)
 
-    for qid, q in pairs(okLog and type(realLog) == "table" and realLog or {}) do if q.title then db.names[qid] = db.names[qid] or q.title end end
+    for qid, quest in pairs(okLog and type(realLog) == "table" and realLog or {}) do if quest.title then db.names[qid] = db.names[qid] or quest.title end end
 
     -- your quest log while it's on: one ready to turn in, one still going
     S.ReadLog = function() return { [186] = { title = "Tiger Mastery", complete = true, index = 1 }, [189] = { title = "Bloodscalp Ears", complete = false, index = 2 } } end
@@ -4551,6 +4660,7 @@ end
 function S.TestModeToggle() if S.testMode then S.TestModeOff() else S.TestModeOn() end end
 function S.MyLevel() return (S.testMode and S.testMode.level) or UnitLevel("player") end
 
+-- The /st, /stq and /sterling commands
 SlashCmdList.STERLINGQUEST = function(input)
     local cmd, rest = (input or ""):match("^(%S*)%s*(.-)$")
 
@@ -4586,7 +4696,7 @@ SlashCmdList.STERLINGQUEST = function(input)
         else
             local list = {}
 
-            for _, p in ipairs(S.Partners()) do list[#list + 1] = p.name .. (p.on and "" or " (off)") .. (S.PartnerOnline(p.name) and " online" or " offline") end
+            for _, partner in ipairs(S.Partners()) do list[#list + 1] = partner.name .. (partner.on and "" or " (off)") .. (S.PartnerOnline(partner.name) and " online" or " offline") end
 
             msg("Partners: " .. (#list > 0 and table.concat(list, ", ") or "none") .. ".  /st partner Name | remove Name | on/off Name | compare Name | clear")
         end
@@ -4643,9 +4753,9 @@ SlashCmdList.STERLINGQUEST = function(input)
         if rest == "" then msg("Usage: /st note grab the flight path here") elseif S.RecordNote(rest) then msg("Noted.") else msg("Not recording, nothing to attach the note to.") end
     elseif cmd == "merge" then
         local a, b = rest:match("^(.-)%s*%+%s*(.-)$")
-        local sa, sb = S.FindSession(a), S.FindSession(b)
+        local session, sb = S.FindSession(a), S.FindSession(b)
 
-        if sa and sb then local m = S.MergeSessions(sa, sb); msg("Merged into \"" .. m.name .. "\"."); S.UI_Update() else msg("Usage: /st merge Name A + Name B  (or numbers from the Sessions list)") end
+        if session and sb then local m = S.MergeSessions(session, sb); msg("Merged into \"" .. m.name .. "\"."); S.UI_Update() else msg("Usage: /st merge Name A + Name B  (or numbers from the Sessions list)") end
     elseif cmd == "scale" then
         local v = tonumber(rest)
 

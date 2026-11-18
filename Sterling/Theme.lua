@@ -14,6 +14,7 @@ S.BG_DIALOG = { bgFile = "Interface\\FrameGeneral\\UI-Background-Rock", edgeFile
 -- Saved settings arrive after this file loads, so ThemeInit runs from ADDON_LOADED before any window is built.
 S.AR, S.AG, S.AB, S.ACCENT_HEX = 1, .82, 0, "|cffffd100"
 
+-- Sets up the look at load (and drops old tab nudge settings)
 function S.ThemeInit()
     local o = SterlingQuestDB and SterlingQuestDB.opts
 
@@ -34,6 +35,7 @@ end
 -- keeping its brightness, so the window, panels and edges stay in step. Reds (warnings) are left alone.
 local NAVY_L = .3 * .16 + .59 * .2 + .11 * .33   -- brightness of the standard panel navy
 
+-- Recolours one of the Flat look's navy shades to the chosen panel colour, keeping its brightness
 function S.NavyWith(c, r, g, b)
     if type(c) ~= "table" or not r then return r, g, b end
     if r > .55 and g < .5 then return r, g, b end
@@ -44,6 +46,7 @@ function S.NavyWith(c, r, g, b)
     return math.min(1, c[1] * k), math.min(1, c[2] * k), math.min(1, c[3] * k)
 end
 
+-- The colour to use in the Flat look (the WoW look keeps it as is)
 function S.Navy(r, g, b)
     if S.WowSkin() then return r, g, b end
 
@@ -83,6 +86,7 @@ do
     if ok2 and type(f2) == "table" and f2.SetFontObject then f2:SetFontObject("GameFontHighlight"); S.FONT = "SterlingFont"; S.font = f2 end
 end
 
+-- The body text colour for the current look
 function S.ApplyTextColor()
     if S.WowSkin() then S.TR, S.TG, S.TB, S.TEXT_HEX = .9, .87, .8, "|cffe6deca" else S.TR, S.TG, S.TB, S.TEXT_HEX = 1, 1, 1, "|cffffffff" end
     if S.fontSmall then pcall(S.fontSmall.SetTextColor, S.fontSmall, S.TR, S.TG, S.TB) end
@@ -102,6 +106,8 @@ local MARK_TXT = { good = "[+] ", bad = "[x] ", warn = "[!] " }
 local markTex
 
 function S.ColorBlind() return S.Opt("cb", false) and true or false end
+
+-- A colour-blind marker (ready-check icon) in front of a label, when that option is on
 function S.Mark(kind, always)
     if not always and not S.ColorBlind() then return "" end
     if markTex == nil then
@@ -118,12 +124,12 @@ function S.Mark(kind, always)
 end
 
 -- Did a texture path actually load? (missing files come back false / nil on this client)
-local function texOK(t, path, ...)
-    local ok, res = pcall(t.SetTexture, t, path, ...)
+local function texOK(texture, path, ...)
+    local ok, res = pcall(texture.SetTexture, texture, path, ...)
 
     if not ok or res == false then return false end
 
-    local ok2, got = pcall(t.GetTexture, t)
+    local ok2, got = pcall(texture.GetTexture, texture)
 
     return ok2 and got ~= nil
 end
@@ -159,6 +165,7 @@ function S.SkinBox(f, flat)
 
     local function alert(r, g, b) return (r or 0) > .55 and (g or 0) < .5 end         -- red-ish warnings keep their tint
 
+    -- In the WoW look, boxes keep the warm grey background whatever colour they're given (warnings excepted)
     f.SetBackdropColor = function(self, r, g, b, a)
         if alert(r, g, b) then rawBg(self, r, g, b, a) return end
 
@@ -167,6 +174,7 @@ function S.SkinBox(f, flat)
         rawBg(self, .16, .14, .12, math.max(a, .55))
     end
 
+    -- Same for the border colour
     f.SetBackdropBorderColor = function(self, r, g, b, a)
         if alert(r, g, b) then rawEdge(self, r, g, b, a) return end
 
@@ -177,52 +185,52 @@ function S.SkinBox(f, flat)
 end
 
 -- A top-level window's chrome. Returns nothing; sets f.bg / f.nine / f.titleTile as it goes.
-function S.SkinWindow(f)
-    if not f.SetBackdrop then return end
+function S.SkinWindow(frame)
+    if not frame.SetBackdrop then return end
     if not S.WowSkin() then
-        f:SetBackdrop(S.BG_FLAT)
+        frame:SetBackdrop(S.BG_FLAT)
 
-        local r, g, b = S.Navy(.1, .12, .17); f:SetBackdropColor(r, g, b, .96)
+        local r, g, b = S.Navy(.1, .12, .17); frame:SetBackdropColor(r, g, b, .96)
 
-        r, g, b = S.Navy(.26, .3, .4); f:SetBackdropBorderColor(r, g, b, 1)
+        r, g, b = S.Navy(.26, .3, .4); frame:SetBackdropBorderColor(r, g, b, 1)
 
         return
     end
 
     -- solid dark floor so a missing texture never leaves a see-through window
-    f.base = f:CreateTexture(nil, "BACKGROUND", nil, -8); f.base:SetPoint("TOPLEFT", 4, -4); f.base:SetPoint("BOTTOMRIGHT", -4, 4); f.base:SetColorTexture(.09, .09, .09, .97)
+    frame.base = frame:CreateTexture(nil, "BACKGROUND", nil, -8); frame.base:SetPoint("TOPLEFT", 4, -4); frame.base:SetPoint("BOTTOMRIGHT", -4, 4); frame.base:SetColorTexture(.09, .09, .09, .97)
 
     -- rock background, tiled (what the profession, character and bag windows use)
-    f.bg = f:CreateTexture(nil, "BACKGROUND", nil, -7); f.bg:SetPoint("TOPLEFT", 4, -4); f.bg:SetPoint("BOTTOMRIGHT", -4, 4)
+    frame.bg = frame:CreateTexture(nil, "BACKGROUND", nil, -7); frame.bg:SetPoint("TOPLEFT", 4, -4); frame.bg:SetPoint("BOTTOMRIGHT", -4, 4)
 
-    if texOK(f.bg, "Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT") then
-        pcall(f.bg.SetHorizTile, f.bg, true); pcall(f.bg.SetVertTile, f.bg, true); f.bg:SetVertexColor(.9, .9, .9, 1)
-    else f.bg:Hide() end
+    if texOK(frame.bg, "Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT") then
+        pcall(frame.bg.SetHorizTile, frame.bg, true); pcall(frame.bg.SetVertTile, frame.bg, true); frame.bg:SetVertexColor(.9, .9, .9, 1)
+    else frame.bg:Hide() end
     -- gold metal nine-slice edge; fall back to the classic dialog border
     local okNine = pcall(function()
-        local ns = CreateFrame("Frame", nil, f, "NineSlicePanelTemplate")
+        local ns = CreateFrame("Frame", nil, frame, "NineSlicePanelTemplate")
 
-        ns:SetAllPoints(); ns:SetFrameLevel(f:GetFrameLevel() + 2)   -- above the inset (+1) and the selected tab (+1)
+        ns:SetAllPoints(); ns:SetFrameLevel(frame:GetFrameLevel() + 2)   -- above the inset (+1) and the selected tab (+1)
         NineSliceUtil.ApplyLayoutByName(ns, "ButtonFrameTemplateNoPortrait")
         assert(ns.TopEdge and ns.TopEdge.GetAtlas and ns.TopEdge:GetAtlas())
         ns:EnableMouse(false)
 
-        f.nine = ns
+        frame.nine = ns
     end)
 
     if okNine then
-        f:SetBackdrop(S.BG_FLAT); f:SetBackdropColor(0, 0, 0, 0); f:SetBackdropBorderColor(0, 0, 0, 0)
+        frame:SetBackdrop(S.BG_FLAT); frame:SetBackdropColor(0, 0, 0, 0); frame:SetBackdropBorderColor(0, 0, 0, 0)
     else
-        f:SetBackdrop(S.BG_DIALOG); f:SetBackdropColor(1, 1, 1, 1); f:SetBackdropBorderColor(1, 1, 1, 1)
-        f.base:SetPoint("TOPLEFT", 10, -10); f.base:SetPoint("BOTTOMRIGHT", -10, 10)
+        frame:SetBackdrop(S.BG_DIALOG); frame:SetBackdropColor(1, 1, 1, 1); frame:SetBackdropBorderColor(1, 1, 1, 1)
+        frame.base:SetPoint("TOPLEFT", 10, -10); frame.base:SetPoint("BOTTOMRIGHT", -10, 10)
     end
 
     -- title band
-    f.titleTile = f:CreateTexture(nil, "BORDER"); f.titleTile:SetPoint("TOPLEFT", okNine and 4 or 10, okNine and -4 or -10); f.titleTile:SetPoint("TOPRIGHT", okNine and -4 or -10, okNine and -4 or -10); f.titleTile:SetHeight(okNine and 24 or 20)
+    frame.titleTile = frame:CreateTexture(nil, "BORDER"); frame.titleTile:SetPoint("TOPLEFT", okNine and 4 or 10, okNine and -4 or -10); frame.titleTile:SetPoint("TOPRIGHT", okNine and -4 or -10, okNine and -4 or -10); frame.titleTile:SetHeight(okNine and 24 or 20)
 
-    if texOK(f.titleTile, "Interface\\FrameGeneral\\_UI-Frame-TitleTile", "REPEAT", "CLAMP") then pcall(f.titleTile.SetHorizTile, f.titleTile, true)
-    else f.titleTile:SetColorTexture(.13, .11, .08, 1) end
-    f.titleLine = f:CreateTexture(nil, "BORDER", nil, 1); f.titleLine:SetPoint("BOTTOMLEFT", f.titleTile, "BOTTOMLEFT", 0, 0); f.titleLine:SetPoint("BOTTOMRIGHT", f.titleTile, "BOTTOMRIGHT", 0, 0); f.titleLine:SetHeight(1); f.titleLine:SetColorTexture(.42, .34, .16, 1)
+    if texOK(frame.titleTile, "Interface\\FrameGeneral\\_UI-Frame-TitleTile", "REPEAT", "CLAMP") then pcall(frame.titleTile.SetHorizTile, frame.titleTile, true)
+    else frame.titleTile:SetColorTexture(.13, .11, .08, 1) end
+    frame.titleLine = frame:CreateTexture(nil, "BORDER", nil, 1); frame.titleLine:SetPoint("BOTTOMLEFT", frame.titleTile, "BOTTOMLEFT", 0, 0); frame.titleLine:SetPoint("BOTTOMRIGHT", frame.titleTile, "BOTTOMRIGHT", 0, 0); frame.titleLine:SetHeight(1); frame.titleLine:SetColorTexture(.42, .34, .16, 1)
 end
 
 -- The sunken dark panel behind a window's content (same as the recipe list in the cooking window).
@@ -279,6 +287,7 @@ function S.TabArt(t)
     return L, R
 end
 
+-- Lines up a window's tabs: even widths, even gaps
 function S.LayoutTabs(parent, list)
     local vis = {}
 
@@ -306,15 +315,15 @@ function S.LayoutTabs(parent, list)
     -- tabs by their art. That keeps the gap to each corner the same on both sides.
     local function artExt(t)
         local L, R = S.TabArt(t)
-        local tl, tr = t:GetLeft(), t:GetRight()
+        local tl, trail = t:GetLeft(), t:GetRight()
 
-        if not (L and R and tl and tr) then return 0, 0 end
+        if not (L and R and tl and trail) then return 0, 0 end
 
         local ll, rr = L:GetLeft(), R:GetRight()
 
         if not (ll and rr) then return 0, 0 end
 
-        return tl - ll, rr - tr
+        return tl - ll, rr - trail
     end
 
     -- Measured in game (6.07, with a measuring command and a screenshot): a tab's visible art starts right at its
@@ -323,6 +332,7 @@ function S.LayoutTabs(parent, list)
     -- centred on the frame, each tab placed by its visible art.
     local VIS_R = 4
 
+    -- Works out the widths and places each tab
     local function apply()
         -- whole pixels only: fractional widths made the gaps between tabs come out uneven
         local vw = math.floor((W - 2 * inset - GAP * (n - 1)) / n)   -- visible width per tab
@@ -413,6 +423,7 @@ function S.FitTabGlow(t)
     end
 end
 
+-- Selects a Blizzard tab and applies our layout again (the game re-sizes tabs a frame later)
 function S.BlizzSelectTab(parent, index)
     pcall(PanelTemplates_SetNumTabs, parent, #parent.Tabs)
 
@@ -421,30 +432,30 @@ function S.BlizzSelectTab(parent, index)
     for i, t in ipairs(parent.Tabs) do
         pcall(PanelTemplates_DeselectTab, t)          -- same shape for every tab
 
-        local on = (i == index)
+        local selected = (i == index)
         local g = glowFor(t)
 
         S.FitTabGlow(t)
         pcall(t.UnlockHighlight, t)
-        g:SetShown(on); g.line:SetShown(on)
+        g:SetShown(selected); g.line:SetShown(selected)
 
-        local okF, fs = pcall(t.GetFontString, t)
+        local okF, label = pcall(t.GetFontString, t)
 
-        if okF and fs and fs.SetTextColor then
+        if okF and label and label.SetTextColor then
             -- every tab's label sits at the same spot (the template nudges the selected one up; undo that)
             if not S.tabTextPt and i ~= index then
-                local okP, p, _, rp, x, y = pcall(fs.GetPoint, fs, 1)
+                local okP, p, _, rp, x, y = pcall(label.GetPoint, label, 1)
 
                 if okP and p then S.tabTextPt = { p, rp or p, x or 0, y or 0 } end
             end
 
             local pt = S.tabTextPt
 
-            if pt then fs:ClearAllPoints(); fs:SetPoint(pt[1], t, pt[2], pt[3], pt[4]) end
+            if pt then label:ClearAllPoints(); label:SetPoint(pt[1], t, pt[2], pt[3], pt[4]) end
 
             pcall(t.SetPushedTextOffset, t, 0, 0)
 
-            if on then fs:SetTextColor(1, .93, .45) else fs:SetTextColor(.85, .7, .2) end
+            if selected then label:SetTextColor(1, .93, .45) else label:SetTextColor(.85, .7, .2) end
         end
     end
 

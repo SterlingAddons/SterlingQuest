@@ -15,6 +15,7 @@ function S.PickColor(r, g, b, a, hasAlpha, onChange)
 
     if type(CPF) ~= "table" then return end
 
+    -- Called by the colour picker as you drag
     local function now()
         local nr, ng, nb = CPF:GetColorRGB()
         local na = a
@@ -40,18 +41,20 @@ function S.PickColor(r, g, b, a, hasAlpha, onChange)
     end
 end
 
+-- A panel with the current look's background and border
 local function Box(parent, name, flat)
-    local f = CreateFrame("Frame", name, parent, BD)
+    local frame = CreateFrame("Frame", name, parent, BD)
 
-    S.SkinBox(f, flat)
+    S.SkinBox(frame, flat)
 
-    return f
+    return frame
 end
 
-local function Movable(f, name)
-    f:SetMovable(true); f:EnableMouse(true); f:SetClampedToScreen(true); f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", function(self) if not S.Opt("lock", false) then self:StartMoving() end end)
-    f:SetScript("OnDragStop", function(self)
+-- Lets a window be dragged, and remembers where it was put
+local function Movable(frame, name)
+    frame:SetMovable(true); frame:EnableMouse(true); frame:SetClampedToScreen(true); frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", function(self) if not S.Opt("lock", false) then self:StartMoving() end end)
+    frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
 
         local p, _, rp, x, y = self:GetPoint()
@@ -59,7 +62,8 @@ local function Movable(f, name)
         SterlingQuestDB.pos = SterlingQuestDB.pos or {}; SterlingQuestDB.pos[name] = { p, rp, x, y }
     end)
 
-    f.Restore = function(self)
+    -- Puts the window back where it was last dragged to
+    frame.Restore = function(self)
         local p = SterlingQuestDB.pos and SterlingQuestDB.pos[name]
 
         if p then self:ClearAllPoints(); self:SetPoint(p[1], UIParent, p[2], p[3], p[4]) end
@@ -78,6 +82,8 @@ local function winRect(w)
 end
 
 local function hits(a, b) return a and b and a[1] < b[3] - 2 and a[3] > b[1] + 2 and a[2] < b[4] - 2 and a[4] > b[2] + 2 end
+
+-- Opens a side window next to the main window, clear of other Sterling windows (or where you dragged it)
 function S.PlaceSide(self)
     local saved = SterlingQuestDB.pos and SterlingQuestDB.pos[self:GetName() or ""]
 
@@ -89,14 +95,15 @@ function S.PlaceSide(self)
 
     local others = {}
 
-    for _, w in ipairs(S.windows or {}) do
-        if w ~= self and w:IsShown() and (w == m or w.sterlingSide) then others[#others + 1] = winRect(w) end
+    for _, window in ipairs(S.windows or {}) do
+        if window ~= self and window:IsShown() and (window == m or window.sterlingSide) then others[#others + 1] = winRect(window) end
     end
 
+    -- Is this spot free of other open windows?
     local function clear(r)
         if not r then return false end
 
-        for _, o in ipairs(others) do if hits(r, o) then return false end end
+        for _, other in ipairs(others) do if hits(r, other) then return false end end
 
         return true
     end
@@ -126,10 +133,10 @@ function S.PlaceSide(self)
 
     local pick
 
-    for _, t in ipairs(tries) do
-        local r = { t[5], t[6], t[5] + w, t[6] + h }
+    for _, try in ipairs(tries) do
+        local r = { try[5], try[6], try[5] + w, try[6] + h }
 
-        if r[1] >= 0 and r[3] <= sw and clear(r) then pick = t break end
+        if r[1] >= 0 and r[3] <= sw and clear(r) then pick = try break end
     end
 
     pick = pick or ((mr[1] > w + 8) and tries[1] or tries[2])
@@ -138,90 +145,91 @@ function S.PlaceSide(self)
     self:SetPoint(pick[1], m, pick[2], pick[3] / k, pick[4] / k)
 end
 
+-- A Sterling window: skinned, movable, closes with Escape, follows the size and opacity settings
 local function Window(name, w, h, title)
-    local f = CreateFrame("Frame", name, UIParent, BD)
+    local frame = CreateFrame("Frame", name, UIParent, BD)
 
-    f:SetSize(w, h); f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
-    f:SetFrameStrata("HIGH")   -- above raid frames like Grid, which sit in MEDIUM
-    S.SkinWindow(f)
+    frame:SetSize(w, h); frame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    frame:SetFrameStrata("HIGH")   -- above raid frames like Grid, which sit in MEDIUM
+    S.SkinWindow(frame)
 
-    S.windows = S.windows or {}; S.windows[#S.windows + 1] = f
+    S.windows = S.windows or {}; S.windows[#S.windows + 1] = frame
 
-    f:SetAlpha(S.Opt("alpha", 1)); f:SetScale(S.Opt("scale", 1))   -- every window follows Window size and opacity
+    frame:SetAlpha(S.Opt("alpha", 1)); frame:SetScale(S.Opt("scale", 1))   -- every window follows Window size and opacity
 
     -- each window is its own layer: the one you click or open comes to the front, whole. Without this
     -- two windows share frame levels and their pieces draw through each other.
-    pcall(f.SetToplevel, f, true)
+    pcall(frame.SetToplevel, frame, true)
 
     -- remember the window you last opened or clicked, so pop-ups can open over it
     local function front(self) pcall(self.Raise, self); if self.sterlingSide ~= nil then S.activeWin = self end end
 
-    f:HookScript("OnShow", front)
-    f:HookScript("OnMouseDown", front)
+    frame:HookScript("OnShow", front)
+    frame:HookScript("OnMouseDown", front)
 
     -- side windows never sit on top of the main window or each other: each time one opens (or the
     -- main window opens) it keeps its saved spot if that is clear, else moves beside the main window
     if name ~= "SterlingQuestSaveFrame" and name ~= "SterlingQuestShareAsk" and name ~= "SterlingQuestInvite" then
-        f:HookScript("OnShow", function(self)
+        frame:HookScript("OnShow", function(self)
             if name == "SterlingQuestFrame" then
-                for _, w in ipairs(S.windows or {}) do if w ~= self and w.sterlingSide and w:IsShown() then pcall(S.PlaceSide, w) end end
+                for _, window in ipairs(S.windows or {}) do if window ~= self and window.sterlingSide and window:IsShown() then pcall(S.PlaceSide, window) end end
             else
                 pcall(S.PlaceSide, self)
             end
         end)
 
-        f.sterlingSide = name ~= "SterlingQuestFrame"
+        frame.sterlingSide = name ~= "SterlingQuestFrame"
     end
 
-    Movable(f, name)
+    Movable(frame, name)
 
     -- the title row lives on its own child frame so it draws above the window's border art
     -- head draws above the border art (a child frame always covers its parent's own textures), so the
     -- title tile is kept inside the border instead of running under the corner pieces
-    local head = CreateFrame("Frame", nil, f); head:SetFrameLevel(f:GetFrameLevel() + 4)
+    local head = CreateFrame("Frame", nil, frame); head:SetFrameLevel(frame:GetFrameLevel() + 4)
 
     head:SetPoint("TOPLEFT", 1, -1); head:SetPoint("TOPRIGHT", -1, -1); head:SetHeight(28)
 
-    f.head = head
+    frame.head = head
 
     local bar = head:CreateTexture(nil, "ARTWORK"); bar:SetAllPoints(); bar:SetColorTexture(S.Navy(.16, .2, .33)); bar:SetAlpha(1)
 
     if S.WowSkin() then
         bar:SetColorTexture(0, 0, 0, 0)
 
-        if rawget(f, "titleTile") then f.titleTile:SetParent(head); f.titleTile:ClearAllPoints(); f.titleTile:SetPoint("TOPLEFT", head, "TOPLEFT", 10, -8); f.titleTile:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", -10, 1) end
-        if rawget(f, "titleLine") then f.titleLine:SetParent(head); f.titleLine:ClearAllPoints(); f.titleLine:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 10, 0); f.titleLine:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", -10, 0) end
+        if rawget(frame, "titleTile") then frame.titleTile:SetParent(head); frame.titleTile:ClearAllPoints(); frame.titleTile:SetPoint("TOPLEFT", head, "TOPLEFT", 10, -8); frame.titleTile:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", -10, 1) end
+        if rawget(frame, "titleLine") then frame.titleLine:SetParent(head); frame.titleLine:ClearAllPoints(); frame.titleLine:SetPoint("BOTTOMLEFT", head, "BOTTOMLEFT", 10, 0); frame.titleLine:SetPoint("BOTTOMRIGHT", head, "BOTTOMRIGHT", -10, 0) end
     end
 
-    f.bar = bar
+    frame.bar = bar
 
     local logo = head:CreateTexture(nil, "OVERLAY"); logo:SetSize(16, 16); logo:SetPoint("LEFT", head, "LEFT", S.WowSkin() and 16 or 9, 0); logo:SetTexture("Interface\\AddOns\\Sterling\\Media\\icon")
 
-    f.title = head:CreateFontString(nil, "OVERLAY", "GameFontNormal"); f.title:SetPoint("LEFT", logo, "RIGHT", 7, 0); f.title:SetText(title)
+    frame.title = head:CreateFontString(nil, "OVERLAY", "GameFontNormal"); frame.title:SetPoint("LEFT", logo, "RIGHT", 7, 0); frame.title:SetText(title)
 
-    if S.WowSkin() then f.title:SetTextColor(1, .82, 0) else f.title:SetTextColor(.96, .97, 1) end
+    if S.WowSkin() then frame.title:SetTextColor(1, .82, 0) else frame.title:SetTextColor(.96, .97, 1) end
 
-    f.right = head:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.right:SetPoint("RIGHT", head, "RIGHT", -34, 0); f.right:SetTextColor(.65, .7, .8)
+    frame.right = head:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.right:SetPoint("RIGHT", head, "RIGHT", -34, 0); frame.right:SetTextColor(.65, .7, .8)
 
     -- a long title is cut short instead of running under whatever sits on the right of the title bar
-    f.title:SetPoint("RIGHT", f.right, "LEFT", -8, 0); f.title:SetJustifyH("LEFT"); f.title:SetWordWrap(false)
+    frame.title:SetPoint("RIGHT", frame.right, "LEFT", -8, 0); frame.title:SetJustifyH("LEFT"); frame.title:SetWordWrap(false)
 
     -- controls on a top layer so nothing covers them
-    local top = CreateFrame("Frame", nil, f); top:SetAllPoints(head); top:SetFrameLevel(f:GetFrameLevel() + 8)
+    local top = CreateFrame("Frame", nil, frame); top:SetAllPoints(head); top:SetFrameLevel(frame:GetFrameLevel() + 8)
 
-    f.top = top
+    frame.top = top
 
     local close = CreateFrame("Button", nil, top, "UIPanelCloseButton"); close:SetScale(.8); close:SetPoint("CENTER", head, "RIGHT", -17, 0)   -- centred on the title bar
 
-    close:SetScript("OnClick", function() f:Hide() end)   -- the template's default hides its parent, which here is the title layer, not the window
+    close:SetScript("OnClick", function() frame:Hide() end)   -- the template's default hides its parent, which here is the title layer, not the window
 
-    f.close = close
+    frame.close = close
 
-    f:Hide()
+    frame:Hide()
 
     -- Escape closes it. The game looks the name up in _G when Escape is pressed, so after Apply rebuilds
     -- the windows the name must point at the new frame, not the old hidden one.
-    _G[name] = f
+    _G[name] = frame
 
     local listed = false
 
@@ -229,93 +237,100 @@ local function Window(name, w, h, title)
 
     if not listed then tinsert(UISpecialFrames, name) end
 
-    return f
+    return frame
 end
 
+-- A standard game button
 local function Button(parent, text, w)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
 
-    b:SetSize(w or 60, 21); b:SetText(text); return b
+    button:SetSize(w or 60, 21); button:SetText(text); return button
 end
 
 -- A dropdown: looks like a field with an arrow (not a red action button), opens a menu of choices.
 -- textFn() gives the shown value, itemsFn() the menu items (S.ShowMenu format, use checked = for the current one).
 local function Dropdown(parent, w, textFn, itemsFn)
-    local d = CreateFrame("Button", nil, parent, BD)
+    local button = CreateFrame("Button", nil, parent, BD)
 
-    d:SetSize(w, 22)
+    button:SetSize(w, 22)
 
-    if d.SetBackdrop then d:SetBackdrop(S.BG_FLAT) end
+    if button.SetBackdrop then button:SetBackdrop(S.BG_FLAT) end
 
+    -- A dropdown's resting look
     local function idle()
-        if not d.SetBackdropColor then return end
-        if S.WowSkin() then d:SetBackdropColor(.06, .05, .04, .9); d:SetBackdropBorderColor(.5, .42, .26, 1)
-        else d:SetBackdropColor(0, 0, 0, .4); local r, g, b = S.Navy(.3, .35, .48); d:SetBackdropBorderColor(r, g, b, 1) end
+        if not button.SetBackdropColor then return end
+        if S.WowSkin() then button:SetBackdropColor(.06, .05, .04, .9); button:SetBackdropBorderColor(.5, .42, .26, 1)
+        else button:SetBackdropColor(0, 0, 0, .4); local r, g, b = S.Navy(.3, .35, .48); button:SetBackdropBorderColor(r, g, b, 1) end
     end
 
     idle()
 
-    d.text = d:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); d.text:SetPoint("LEFT", 8, 0); d.text:SetPoint("RIGHT", -24, 0); d.text:SetJustifyH("LEFT"); d.text:SetWordWrap(false)
-    d.arrow = d:CreateTexture(nil, "OVERLAY"); d.arrow:SetSize(20, 20); d.arrow:SetPoint("RIGHT", -1, 0)
+    button.text = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); button.text:SetPoint("LEFT", 8, 0); button.text:SetPoint("RIGHT", -24, 0); button.text:SetJustifyH("LEFT"); button.text:SetWordWrap(false)
+    button.arrow = button:CreateTexture(nil, "OVERLAY"); button.arrow:SetSize(20, 20); button.arrow:SetPoint("RIGHT", -1, 0)
 
-    if not S.TexOK(d.arrow, "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up") then
-        d.arrow:Hide()
+    if not S.TexOK(button.arrow, "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up") then
+        button.arrow:Hide()
 
-        d.arrowText = d:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); d.arrowText:SetPoint("RIGHT", -7, 0); d.arrowText:SetText("v")
+        button.arrowText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); button.arrowText:SetPoint("RIGHT", -7, 0); button.arrowText:SetText("v")
     end
 
-    d:SetScript("OnEnter", function(self) if self:IsEnabled() and self.SetBackdropBorderColor then self:SetBackdropBorderColor(S.AR, S.AG, S.AB, 1) end end)
-    d:SetScript("OnLeave", idle)
-    d:SetScript("OnClick", function(self)
+    button:SetScript("OnEnter", function(self) if self:IsEnabled() and self.SetBackdropBorderColor then self:SetBackdropBorderColor(S.AR, S.AG, S.AB, 1) end end)
+    button:SetScript("OnLeave", idle)
+    button:SetScript("OnClick", function(self)
         local items = itemsFn() or {}
 
         if #items > 0 then S.ShowMenu(items, self) end
     end)
 
-    d.Refresh = function(self)
+    -- Updates the dropdown's text and enabled look
+    button.Refresh = function(self)
         self.text:SetText(textFn() or "")
 
-        local on = self:IsEnabled()
+        local enabled = self:IsEnabled()
 
-        if on then self.text:SetTextColor(S.TR, S.TG, S.TB) else self.text:SetTextColor(.5, .5, .5) end
+        if enabled then self.text:SetTextColor(S.TR, S.TG, S.TB) else self.text:SetTextColor(.5, .5, .5) end
 
-        self.arrow:SetDesaturated(not on)
+        self.arrow:SetDesaturated(not enabled)
     end
 
-    d:Refresh()
+    button:Refresh()
 
-    return d
+    return button
 end
 
 S.UI_Dropdown = Dropdown
 S.UI_Window, S.UI_Button, S.UI_Box = Window, Button, Box
 
+-- The coloured kind label on a path step (PICK UP, TURN IN...)
 local function Pill(parent)
-    local p = Box(parent, nil, true)
+    local box = Box(parent, nil, true)
 
-    if p.SetBackdropColor then p:SetBackdropColor(0, 0, 0, 0); p:SetBackdropBorderColor(0, 0, 0, 0) end   -- nothing shows until Set gives it a kind
+    if box.SetBackdropColor then box:SetBackdropColor(0, 0, 0, 0); box:SetBackdropBorderColor(0, 0, 0, 0) end   -- nothing shows until Set gives it a kind
 
-    p:SetSize(52, 15)
+    box:SetSize(52, 15)
 
-    p.text = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); p.text:SetPoint("CENTER")
+    box.text = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); box.text:SetPoint("CENTER")
 
     -- one small coloured pill: a box with a label, sized to the text
     local function mini(parent)
-        local b = Box(parent, nil, true)
+        local box = Box(parent, nil, true)
 
-        b:SetHeight(15)
+        box:SetHeight(15)
 
-        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); b.text:SetPoint("CENTER")
-        b.Paint = function(self, label, c)
+        box.text = box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); box.text:SetPoint("CENTER")
+
+        -- Colours one pill and sizes it to its label
+        box.Paint = function(self, label, c)
             self:SetBackdropColor(c[1], c[2], c[3], .16); self:SetBackdropBorderColor(c[1], c[2], c[3], .35)
             self.text:SetText(label); self.text:SetTextColor(c[1], c[2], c[3])
             self:SetWidth(math.max(44, self.text:GetStringWidth() + 14))
         end
 
-        return b
+        return box
     end
 
-    p.Set = function(self, kind)
+    -- Shows a step kind; a pick-up and turn-in together get two pills
+    box.Set = function(self, kind)
         if kind == "deliver" then
             -- pick up and turn in, back to back: both pills joined by an arrow (PICK UP > TURN IN)
             if not rawget(self, "a") then
@@ -336,63 +351,63 @@ local function Pill(parent)
 
         self.text:Show()
 
-        local c = KIND_COLOR[kind] or { .8, .8, .8 }
+        local color = KIND_COLOR[kind] or { .8, .8, .8 }
 
-        self:SetBackdropColor(c[1], c[2], c[3], .16); self:SetBackdropBorderColor(c[1], c[2], c[3], .35)
-        self.text:SetText((S.KIND_LABEL[kind] or kind):upper()); self.text:SetTextColor(c[1], c[2], c[3])
+        self:SetBackdropColor(color[1], color[2], color[3], .16); self:SetBackdropBorderColor(color[1], color[2], color[3], .35)
+        self.text:SetText((S.KIND_LABEL[kind] or kind):upper()); self.text:SetTextColor(color[1], color[2], color[3])
         self:SetWidth(math.max(rawget(self, "minW") or 44, self.text:GetStringWidth() + 14))
     end
 
-    return p
+    return box
 end
 
 -- Slim scrollbar for the row lists: a track with a draggable thumb. onScroll(newOffset) is called while dragging.
 local function MiniScroll(parent, onScroll)
-    local sb = CreateFrame("Frame", nil, parent); sb:SetWidth(6)
+    local frame = CreateFrame("Frame", nil, parent); frame:SetWidth(6)
 
-    sb.track = sb:CreateTexture(nil, "BACKGROUND"); sb.track:SetAllPoints(); sb.track:SetColorTexture(1, 1, 1, .06)
-    sb.thumb = CreateFrame("Button", nil, sb); sb.thumb:SetPoint("TOP", 0, 0); sb.thumb:SetWidth(6)
-    sb.thumb.tex = sb.thumb:CreateTexture(nil, "ARTWORK"); sb.thumb.tex:SetAllPoints(); sb.thumb.tex:SetColorTexture(S.AR, S.AG, S.AB, .7)
+    frame.track = frame:CreateTexture(nil, "BACKGROUND"); frame.track:SetAllPoints(); frame.track:SetColorTexture(1, 1, 1, .06)
+    frame.thumb = CreateFrame("Button", nil, frame); frame.thumb:SetPoint("TOP", 0, 0); frame.thumb:SetWidth(6)
+    frame.thumb.tex = frame.thumb:CreateTexture(nil, "ARTWORK"); frame.thumb.tex:SetAllPoints(); frame.thumb.tex:SetColorTexture(S.AR, S.AG, S.AB, .7)
 
-    sb.thumb:SetScript("OnEnter", function(self) self.tex:SetColorTexture(.7, .84, 1, .9) end)
-    sb.thumb:SetScript("OnLeave", function(self) if not sb.drag then self.tex:SetColorTexture(S.AR, S.AG, S.AB, .7) end end)
-    sb.thumb:SetScript("OnMouseDown", function() sb.drag = true; sb.startY = select(2, GetCursorPosition()) / sb:GetEffectiveScale(); sb.startOff = sb.offset end)
-    sb.thumb:SetScript("OnMouseUp", function(self) sb.drag = false; self.tex:SetColorTexture(S.AR, S.AG, S.AB, .7) end)
-    sb:SetScript("OnUpdate", function()
-        if not sb.drag then return end
-        if not IsMouseButtonDown("LeftButton") then sb.drag = false return end
+    frame.thumb:SetScript("OnEnter", function(self) self.tex:SetColorTexture(.7, .84, 1, .9) end)
+    frame.thumb:SetScript("OnLeave", function(self) if not frame.drag then self.tex:SetColorTexture(S.AR, S.AG, S.AB, .7) end end)
+    frame.thumb:SetScript("OnMouseDown", function() frame.drag = true; frame.startY = select(2, GetCursorPosition()) / frame:GetEffectiveScale(); frame.startOff = frame.offset end)
+    frame.thumb:SetScript("OnMouseUp", function(self) frame.drag = false; self.tex:SetColorTexture(S.AR, S.AG, S.AB, .7) end)
+    frame:SetScript("OnUpdate", function()
+        if not frame.drag then return end
+        if not IsMouseButtonDown("LeftButton") then frame.drag = false return end
 
-        local y = select(2, GetCursorPosition()) / sb:GetEffectiveScale()
-        local range = sb.total - sb.visible
+        local y = select(2, GetCursorPosition()) / frame:GetEffectiveScale()
+        local range = frame.total - frame.visible
 
         if range <= 0 then return end
 
-        local px = (sb:GetHeight() - sb.thumb:GetHeight())
-        local off = math.floor(sb.startOff + (sb.startY - y) / math.max(1, px) * range + .5)
+        local px = (frame:GetHeight() - frame.thumb:GetHeight())
+        local off = math.floor(frame.startOff + (frame.startY - y) / math.max(1, px) * range + .5)
 
         off = math.max(0, math.min(range, off))
 
-        if off ~= sb.offset then sb.offset = off; onScroll(off) end
+        if off ~= frame.offset then frame.offset = off; onScroll(off) end
     end)
 
     -- offset: first visible index (0-based); visible: rows on screen; total: rows overall
-    sb.Set = function(self, offset, visible, total)
+    frame.Set = function(self, offset, visible, total)
         self.offset, self.visible, self.total = offset, visible, total
 
         if total <= visible then self:Hide() return end
 
         self:Show()
 
-        local h = self:GetHeight()
-        local th = math.max(14, h * visible / total)
+        local height = self:GetHeight()
+        local th = math.max(14, height * visible / total)
 
         self.thumb:SetHeight(th)
-        self.thumb:ClearAllPoints(); self.thumb:SetPoint("TOP", 0, -((h - th) * offset / (total - visible)))
+        self.thumb:ClearAllPoints(); self.thumb:SetPoint("TOP", 0, -((height - th) * offset / (total - visible)))
     end
 
-    sb:Hide()
+    frame:Hide()
 
-    return sb
+    return frame
 end
 
 ---------------------------------------------------------------------------
@@ -422,39 +437,41 @@ local STD_H = 510        -- one window height for every tab; only "Less" on Path
 local SHOW_SMALL = 0     -- "Less" shows only the active step
 local current = "catchup"
 
+-- One tab of the navy look's own tab strip
 local function Tab(parent, key, text, x, w)
-    local b = CreateFrame("Button", nil, parent)
+    local button = CreateFrame("Button", nil, parent)
 
-    b:SetSize(w or 70, 24); b:SetPoint("TOPLEFT", x, -30)
+    button:SetSize(w or 70, 24); button:SetPoint("TOPLEFT", x, -30)
 
-    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); b.text:SetPoint("CENTER"); b.text:SetText(text)
-    b.line = b:CreateTexture(nil, "ARTWORK"); b.line:SetPoint("BOTTOMLEFT", 8, 0); b.line:SetPoint("BOTTOMRIGHT", -8, 0); b.line:SetHeight(2); b.line:SetColorTexture(S.AR, S.AG, S.AB, 1)
+    button.text = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); button.text:SetPoint("CENTER"); button.text:SetText(text)
+    button.line = button:CreateTexture(nil, "ARTWORK"); button.line:SetPoint("BOTTOMLEFT", 8, 0); button.line:SetPoint("BOTTOMRIGHT", -8, 0); button.line:SetHeight(2); button.line:SetColorTexture(S.AR, S.AG, S.AB, 1)
 
-    b:SetScript("OnClick", function() S.UI_Tab(key) end)
+    button:SetScript("OnClick", function() S.UI_Tab(key) end)
 
-    b.own = true
-    tabs[key] = b
+    button.own = true
+    tabs[key] = button
 
-    return b
+    return button
 end
 
 local tabOrder = {}   -- key -> index, for Blizzard's bottom tabs
 
+-- Switches the main window to a tab (building it the first time)
 function S.UI_Tab(key)
     current = key
 
     if builders[key] then local b = builders[key]; builders[key] = nil; b(pages[key]) end
 
-    for k, b in pairs(tabs) do
-        local on = (k == key)
+    for k, tab in pairs(tabs) do
+        local selected = (k == key)
 
-        if rawget(b, "own") then
-            b.text:SetTextColor(on and 1 or .56, on and 1 or .6, on and 1 or .7)
+        if rawget(tab, "own") then
+            tab.text:SetTextColor(selected and 1 or .56, selected and 1 or .6, selected and 1 or .7)
 
-            if on then b.line:Show() else b.line:Hide() end
+            if selected then tab.line:Show() else tab.line:Hide() end
         end
 
-        if pages[k] then if on then pages[k]:Show() else pages[k]:Hide() end end
+        if pages[k] then if selected then pages[k]:Show() else pages[k]:Hide() end end
     end
 
     if main and rawget(main, "Tabs") and tabOrder[key] then S.BlizzSelectTab(main, tabOrder[key]) end
@@ -476,31 +493,32 @@ function S.UI_Main() return main end
 function S.UI_Page(key) return pages[key] end
 function S.UI_CurrentTab() return current end
 
+-- The Path tab: record bar, next-step card, step list
 local function BuildPath(page)
     -- record bar
-    local rb = Box(page); rb:SetPoint("TOPLEFT", 0, 0); rb:SetPoint("TOPRIGHT", 0, 0); rb:SetHeight(30)
+    local box = Box(page); box:SetPoint("TOPLEFT", 0, 0); box:SetPoint("TOPRIGHT", 0, 0); box:SetHeight(30)
 
-    rb.dot = rb:CreateTexture(nil, "ARTWORK"); rb.dot:SetSize(10, 10); rb.dot:SetPoint("LEFT", 10, 0); rb.dot:SetTexture("Interface\\COMMON\\Indicator-Red")
-    rb.text = rb:CreateFontString(nil, "OVERLAY", "GameFontNormal"); rb.text:SetPoint("LEFT", rb.dot, "RIGHT", 7, 0)
-    rb.meta = rb:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); rb.meta:SetPoint("LEFT", rb.text, "RIGHT", 8, 0); rb.meta:SetTextColor(.78, .8, .86)
-    rb.btn = Button(rb, "Record", 70); rb.btn:SetPoint("RIGHT", -6, 0)
+    box.dot = box:CreateTexture(nil, "ARTWORK"); box.dot:SetSize(10, 10); box.dot:SetPoint("LEFT", 10, 0); box.dot:SetTexture("Interface\\COMMON\\Indicator-Red")
+    box.text = box:CreateFontString(nil, "OVERLAY", "GameFontNormal"); box.text:SetPoint("LEFT", box.dot, "RIGHT", 7, 0)
+    box.meta = box:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); box.meta:SetPoint("LEFT", box.text, "RIGHT", 8, 0); box.meta:SetTextColor(.78, .8, .86)
+    box.btn = Button(box, "Record", 70); box.btn:SetPoint("RIGHT", -6, 0)
 
-    rb.btn:SetScript("OnClick", function() if S.IsRecording() then S.RecordStop() else S.RecordStart() end end)
+    box.btn:SetScript("OnClick", function() if S.IsRecording() then S.RecordStop() else S.RecordStart() end end)
 
-    rb.note = Button(rb, "Note", 46); rb.note:SetPoint("RIGHT", rb.btn, "LEFT", -4, 0); rb.note:Hide()
+    box.note = Button(box, "Note", 46); box.note:SetPoint("RIGHT", box.btn, "LEFT", -4, 0); box.note:Hide()
 
-    rb.meta:SetPoint("RIGHT", rb.note, "LEFT", -6, 0); rb.meta:SetJustifyH("LEFT"); rb.meta:SetWordWrap(false)
-    rb.note:SetScript("OnClick", function() S.UI_Prompt("Add a note", "Shows as a step for whoever follows this session.", "", "Add", function(text) if text ~= "" then S.RecordNote(text); msg("Noted.") end end) end)
+    box.meta:SetPoint("RIGHT", box.note, "LEFT", -6, 0); box.meta:SetJustifyH("LEFT"); box.meta:SetWordWrap(false)
+    box.note:SetScript("OnClick", function() S.UI_Prompt("Add a note", "Shows as a step for whoever follows this session.", "", "Add", function(text) if text ~= "" then S.RecordNote(text); msg("Noted.") end end) end)
 
-    page.rec = rb
+    page.rec = box
 
-    page.follow = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.follow:SetPoint("TOPLEFT", rb, "BOTTOMLEFT", 4, -9); page.follow:SetTextColor(.56, .6, .7)
-    page.chip = Pill(page); page.chip:SetPoint("RIGHT", rb, "BOTTOMRIGHT", 0, -15); page.chip:Hide()
+    page.follow = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.follow:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 4, -9); page.follow:SetTextColor(.56, .6, .7)
+    page.chip = Pill(page); page.chip:SetPoint("RIGHT", box, "BOTTOMRIGHT", 0, -15); page.chip:Hide()
     page.dist = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.dist:SetPoint("RIGHT", page.chip, "LEFT", -8, 0); page.dist:SetTextColor(.42, .46, .55)
 
     page.follow:SetPoint("RIGHT", page.dist, "LEFT", -8, 0); page.follow:SetJustifyH("LEFT"); page.follow:SetWordWrap(false)
 
-    local card = Box(page); card:SetPoint("TOPLEFT", rb, "BOTTOMLEFT", 0, -28); card:SetPoint("TOPRIGHT", rb, "BOTTOMRIGHT", 0, -28); card:SetHeight(58)
+    local card = Box(page); card:SetPoint("TOPLEFT", box, "BOTTOMLEFT", 0, -28); card:SetPoint("TOPRIGHT", box, "BOTTOMRIGHT", 0, -28); card:SetHeight(58)
 
     card:SetBackdropColor(.17, .21, .32, 1); card:SetBackdropBorderColor(.35, .5, .84, 1)
 
@@ -548,21 +566,21 @@ local function BuildPath(page)
     end)
 
     for i = 1, ROWS do
-        local r = CreateFrame("Frame", nil, page); r:SetHeight(17)
+        local frame = CreateFrame("Frame", nil, page); frame:SetHeight(17)
 
-        r:SetPoint("TOPLEFT", card, "BOTTOMLEFT", 14, -16 - (i - 1) * 18); r:SetPoint("RIGHT", page, "RIGHT", -12, 0)
+        frame:SetPoint("TOPLEFT", card, "BOTTOMLEFT", 14, -16 - (i - 1) * 18); frame:SetPoint("RIGHT", page, "RIGHT", -12, 0)
 
-        r.dotl = r:CreateTexture(nil, "ARTWORK"); r.dotl:SetSize(7, 7); r.dotl:SetPoint("LEFT", -12, 0); r.dotl:SetTexture("Interface\\Buttons\\WHITE8x8"); r.dotl:SetVertexColor(.33, .38, .5, 1)
-        r.pill = Pill(r); r.pill:SetPoint("LEFT", 0, 0); r.pill:SetScale(.85); r.pill.minW = 62   -- PICK UP, TURN IN, DO, TRAVEL... all one width
-        r.text = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.text:SetPoint("LEFT", r.pill, "RIGHT", 8, 0); r.text:SetPoint("RIGHT", r, "RIGHT", -40, 0); r.text:SetTextColor(.84, .86, .92); r.text:SetWordWrap(false); r.text:SetJustifyH("LEFT")   -- fills whatever the pill leaves (the joined PICK UP > TURN IN pill is wider)
-        r.time = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.time:SetPoint("RIGHT", -4, 0); r.time:SetTextColor(.42, .46, .55)
+        frame.dotl = frame:CreateTexture(nil, "ARTWORK"); frame.dotl:SetSize(7, 7); frame.dotl:SetPoint("LEFT", -12, 0); frame.dotl:SetTexture("Interface\\Buttons\\WHITE8x8"); frame.dotl:SetVertexColor(.33, .38, .5, 1)
+        frame.pill = Pill(frame); frame.pill:SetPoint("LEFT", 0, 0); frame.pill:SetScale(.85); frame.pill.minW = 62   -- PICK UP, TURN IN, DO, TRAVEL... all one width
+        frame.text = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.text:SetPoint("LEFT", frame.pill, "RIGHT", 8, 0); frame.text:SetPoint("RIGHT", frame, "RIGHT", -40, 0); frame.text:SetTextColor(.84, .86, .92); frame.text:SetWordWrap(false); frame.text:SetJustifyH("LEFT")   -- fills whatever the pill leaves (the joined PICK UP > TURN IN pill is wider)
+        frame.time = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.time:SetPoint("RIGHT", -4, 0); frame.time:SetTextColor(.42, .46, .55)
 
-        r:EnableMouse(true)
+        frame:EnableMouse(true)
 
-        r.hl = r:CreateTexture(nil, "BACKGROUND"); r.hl:SetAllPoints(); r.hl:SetColorTexture(1, 1, 1, .06); r.hl:Hide()
-        r.cur = r:CreateTexture(nil, "BACKGROUND"); r.cur:SetAllPoints(); r.cur:SetColorTexture(S.AR, S.AG, S.AB, .14); r.cur:Hide()
+        frame.hl = frame:CreateTexture(nil, "BACKGROUND"); frame.hl:SetAllPoints(); frame.hl:SetColorTexture(1, 1, 1, .06); frame.hl:Hide()
+        frame.cur = frame:CreateTexture(nil, "BACKGROUND"); frame.cur:SetAllPoints(); frame.cur:SetColorTexture(S.AR, S.AG, S.AB, .14); frame.cur:Hide()
 
-        r:SetScript("OnEnter", function(self)
+        frame:SetScript("OnEnter", function(self)
             self.hl:Show()
 
             if self.step then
@@ -576,14 +594,14 @@ local function BuildPath(page)
             end
         end)
 
-        r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
-        r:SetScript("OnMouseUp", function(self, btn)
+        frame:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
+        frame:SetScript("OnMouseUp", function(self, btn)
             if not self.step then return end
             if btn == "RightButton" then if self.step.x then S.SetWaypoint(self.step) end return end
 
             local target
 
-            for k, st in ipairs(S.steps) do if st == self.step then target = k end end
+            for k, step in ipairs(S.steps) do if step == self.step then target = k end end
 
             if not target then return end
 
@@ -615,7 +633,7 @@ local function BuildPath(page)
             S.Recalc(false); msg("Jumped to step " .. target .. ". Undo puts the skipped steps back.")
         end)
 
-        page.rows[i] = r
+        page.rows[i] = frame
     end
 
     local line = page:CreateTexture(nil, "BACKGROUND"); line:SetPoint("TOPLEFT", card, "BOTTOMLEFT", 6, -12); line:SetWidth(2); line:SetHeight(ROWS * 18); line:SetColorTexture(S.Navy(.25, .3, .42))
@@ -634,7 +652,7 @@ local function BuildPath(page)
         SterlingQuestDB.opts.arrowopt = self:GetChecked() and true or false
         SterlingQuestDB.path = SterlingQuestDB.opts.arrowopt
 
-        if SterlingQuestDB.path then local st = S.steps[S.CurrentIndex()]; if st then S.SetWaypoint(st) end else S.ClearWaypoint() end
+        if SterlingQuestDB.path then local step = S.steps[S.CurrentIndex()]; if step then S.SetWaypoint(step) end else S.ClearWaypoint() end
 
         S.Recalc(false)
     end)
@@ -652,7 +670,7 @@ local function BuildPath(page)
     -- the /way on the card is a button too: one click puts the arrow on this step
     card.wayBtn = CreateFrame("Button", nil, card); card.wayBtn:SetAllPoints(card.way)
 
-    card.wayBtn:SetScript("OnClick", function() local st = S.steps[S.CurrentIndex()]; if st and st.x then S.SetWaypoint(st); msg("Arrow set: " .. S.StepLabel(st)) end end)
+    card.wayBtn:SetScript("OnClick", function() local step = S.steps[S.CurrentIndex()]; if step and step.x then S.SetWaypoint(step); msg("Arrow set: " .. S.StepLabel(step)) end end)
     card.wayBtn:SetScript("OnEnter", function(self) card.way:SetTextColor(1, .93, .45); GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Click to put the arrow here"); GameTooltip:Show() end)
     card.wayBtn:SetScript("OnLeave", function() card.way:SetTextColor(.72, .8, .96); GameTooltip:Hide() end)
     page.clear:SetScript("OnClick", function()
@@ -680,6 +698,7 @@ end
 
 local SROWS = 7
 
+-- The Sessions tab: list of recorded sessions
 local function BuildSessions(page)
     local top = CreateFrame("Frame", nil, page); top:SetPoint("TOPLEFT"); top:SetPoint("TOPRIGHT"); top:SetHeight(26)
 
@@ -702,29 +721,29 @@ local function BuildSessions(page)
     page.sb:SetPoint("TOPRIGHT", page.listArea, "TOPRIGHT", 0, 0); page.sb:SetPoint("BOTTOMRIGHT", page.listArea, "BOTTOMRIGHT", 0, 0)
 
     for i = 1, SROWS do
-        local r = Box(page); r:SetHeight(46)
+        local row = Box(page); row:SetHeight(46)
 
-        r:SetPoint("TOPLEFT", 0, -32 - (i - 1) * 50); r:SetPoint("RIGHT", -10, 0)
-        r:EnableMouseWheel(true); r:SetScript("OnMouseWheel", function(_, d) page.listArea:GetScript("OnMouseWheel")(page.listArea, d) end)
-        r:SetBackdropColor(1, 1, 1, .025); r:SetBackdropBorderColor(.2, .23, .32, 1)
+        row:SetPoint("TOPLEFT", 0, -32 - (i - 1) * 50); row:SetPoint("RIGHT", -10, 0)
+        row:EnableMouseWheel(true); row:SetScript("OnMouseWheel", function(_, d) page.listArea:GetScript("OnMouseWheel")(page.listArea, d) end)
+        row:SetBackdropColor(1, 1, 1, .025); row:SetBackdropBorderColor(.2, .23, .32, 1)
 
-        r.accent = r:CreateTexture(nil, "ARTWORK"); r.accent:SetPoint("TOPLEFT", 1, -1); r.accent:SetPoint("BOTTOMLEFT", 1, 1); r.accent:SetWidth(3)
-        r.nm = r:CreateFontString(nil, "OVERLAY", "GameFontNormal"); r.nm:SetPoint("TOPLEFT", 12, -7); r.nm:SetTextColor(S.TR, S.TG, S.TB)
-        r.meta = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.meta:SetPoint("TOPLEFT", r.nm, "BOTTOMLEFT", 0, -3); r.meta:SetTextColor(.56, .6, .7); r.meta:SetWidth(190); r.meta:SetJustifyH("LEFT"); r.meta:SetWordWrap(false)
-        r.who = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.who:SetPoint("LEFT", r.nm, "RIGHT", 8, 0)
-        r.b1 = Button(r, "Export", 56); r.b1:SetPoint("RIGHT", -34, 0)
-        r.b2 = Button(r, ">", 26); r.b2:SetPoint("RIGHT", -6, 0)
+        row.accent = row:CreateTexture(nil, "ARTWORK"); row.accent:SetPoint("TOPLEFT", 1, -1); row.accent:SetPoint("BOTTOMLEFT", 1, 1); row.accent:SetWidth(3)
+        row.nm = row:CreateFontString(nil, "OVERLAY", "GameFontNormal"); row.nm:SetPoint("TOPLEFT", 12, -7); row.nm:SetTextColor(S.TR, S.TG, S.TB)
+        row.meta = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.meta:SetPoint("TOPLEFT", row.nm, "BOTTOMLEFT", 0, -3); row.meta:SetTextColor(.56, .6, .7); row.meta:SetWidth(190); row.meta:SetJustifyH("LEFT"); row.meta:SetWordWrap(false)
+        row.who = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.who:SetPoint("LEFT", row.nm, "RIGHT", 8, 0)
+        row.b1 = Button(row, "Export", 56); row.b1:SetPoint("RIGHT", -34, 0)
+        row.b2 = Button(row, ">", 26); row.b2:SetPoint("RIGHT", -6, 0)
 
-        r:EnableMouse(true)
-        r:SetScript("OnMouseUp", function(self, btn)
+        row:EnableMouse(true)
+        row:SetScript("OnMouseUp", function(self, btn)
             if btn == "RightButton" and self.sess then S.UI_SessionMenu(self.sess) end
         end)
 
-        r:SetScript("OnEnter", function(self)
+        row:SetScript("OnEnter", function(self)
             if not self.sess then return end
 
             local sess = self.sess
-            local c = S.SessionCounts(sess)
+            local counts = S.SessionCounts(sess)
             local zones = {}
 
             for z in pairs(sess.zones or {}) do zones[#zones + 1] = z end
@@ -734,14 +753,14 @@ local function BuildSessions(page)
             GameTooltip:AddLine(sess.name, 1, 1, 1)
             GameTooltip:AddDoubleLine((sess.char or "?") .. (sess.imported and "  (received)" or "  (yours)"), S.Clock(sess.start) .. " - " .. S.Clock(sess.stop or time()), .72, .76, .85, .72, .76, .85)
             GameTooltip:AddLine(" ")
-            GameTooltip:AddDoubleLine("|cff7ee2a2Turn-ins|r", c.turnin, 1, 1, 1, .49, .89, .64)
-            GameTooltip:AddDoubleLine("|cff8ab8ffPick-ups|r", c.pickup, 1, 1, 1, S.AR, S.AG, S.AB)
+            GameTooltip:AddDoubleLine("|cff7ee2a2Turn-ins|r", counts.turnin, 1, 1, 1, .49, .89, .64)
+            GameTooltip:AddDoubleLine("|cff8ab8ffPick-ups|r", counts.pickup, 1, 1, 1, S.AR, S.AG, S.AB)
 
-            if c.skip > 0 then GameTooltip:AddDoubleLine("|cffff9b92Skipped|r", c.skip, 1, 1, 1, 1, .61, .57) end
-            if c.dungeon > 0 then GameTooltip:AddDoubleLine("|cffff9b92Dungeon runs|r", c.dungeon, 1, 1, 1, 1, .61, .57) end
-            if c.flight > 0 then GameTooltip:AddDoubleLine("|cffc3a8ffFlights|r", c.flight, 1, 1, 1, .76, .66, 1) end
+            if counts.skip > 0 then GameTooltip:AddDoubleLine("|cffff9b92Skipped|r", counts.skip, 1, 1, 1, 1, .61, .57) end
+            if counts.dungeon > 0 then GameTooltip:AddDoubleLine("|cffff9b92Dungeon runs|r", counts.dungeon, 1, 1, 1, 1, .61, .57) end
+            if counts.flight > 0 then GameTooltip:AddDoubleLine("|cffc3a8ffFlights|r", counts.flight, 1, 1, 1, .76, .66, 1) end
             if sess.lvl0 and sess.lvl1 and sess.lvl1 > sess.lvl0 then GameTooltip:AddDoubleLine("|cff7ee2a2Levels|r", sess.lvl0 .. " -> " .. sess.lvl1, 1, 1, 1, .49, .89, .64) end
-            if c.death > 0 then GameTooltip:AddDoubleLine("Deaths", c.death, .7, .74, .84, .7, .74, .84) end
+            if counts.death > 0 then GameTooltip:AddDoubleLine("Deaths", counts.death, .7, .74, .84, .7, .74, .84) end
 
             GameTooltip:AddDoubleLine("Played", S.Duration(sess), .7, .74, .84, .7, .74, .84)
             GameTooltip:AddLine(" ")
@@ -749,14 +768,14 @@ local function BuildSessions(page)
 
             if sess.note then GameTooltip:AddLine(sess.note, .95, .77, .42, true) end
 
-            GameTooltip:AddLine((c.ev or 0) .. " events, " .. (c.tr or 0) .. " trail points" .. (S.IsPacked(sess) and "  (packed; opens normally)" or ""), .45, .5, .6)
+            GameTooltip:AddLine((counts.ev or 0) .. " events, " .. (counts.tr or 0) .. " trail points" .. (S.IsPacked(sess) and "  (packed; opens normally)" or ""), .45, .5, .6)
             GameTooltip:AddLine("Right-click: follow, map, export, send, compare, rename, delete", .5, .8, 1, true)
             GameTooltip:Show()
         end)
 
-        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        page.rows[i] = r
+        page.rows[i] = row
     end
 
     page.hint = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.hint:SetPoint("BOTTOMLEFT", 4, 4); page.hint:SetTextColor(.42, .46, .55)
@@ -781,6 +800,7 @@ local function BuildSessions(page)
     page.rest:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+-- The Compare tab: what differs between your log and a partner's
 local function BuildCompare(page)
     local sf = CreateFrame("ScrollFrame", "SterlingQuestDiffScroll", page, "UIPanelScrollFrameTemplate")
 
@@ -792,11 +812,11 @@ local function BuildCompare(page)
 
     page.content = content; page.lines = {}
 
-    local b = Button(page, "Ask for update", 100); b:SetPoint("BOTTOMLEFT", 0, 0)
+    local button = Button(page, "Ask for update", 100); button:SetPoint("BOTTOMLEFT", 0, 0)
 
-    b:SetScript("OnClick", function() S.RequestPartner(); S.Broadcast(true, true); msg("Asked your partners for a fresh snapshot.") end)
+    button:SetScript("OnClick", function() S.RequestPartner(); S.Broadcast(true, true); msg("Asked your partners for a fresh snapshot.") end)
 
-    local b2 = Button(page, "Export log", 76); b2:SetPoint("LEFT", b, "RIGHT", 4, 0)
+    local b2 = Button(page, "Export log", 76); b2:SetPoint("LEFT", button, "RIGHT", 4, 0)
 
     b2:SetScript("OnClick", function() S.UI_ShowExport("log") end)
 
@@ -808,8 +828,8 @@ local function BuildCompare(page)
     page.pick = Dropdown(page, 120, function() return S.partner and S.PartnerLabel(S.partner.name or "?") or "nobody yet" end, function()
         local items = {}
 
-        for _, p in ipairs(S.Partners()) do
-            if S.snaps[p.name] then items[#items + 1] = { text = S.PartnerLabel(p.name), checked = S.partner and S.partner.name == p.name, func = function() S.SelectPartner(p.name); S.UI_Update() end } end
+        for _, partner in ipairs(S.Partners()) do
+            if S.snaps[partner.name] then items[#items + 1] = { text = S.PartnerLabel(partner.name), checked = S.partner and S.partner.name == partner.name, func = function() S.SelectPartner(partner.name); S.UI_Update() end } end
         end
 
         if #items == 0 then items[1] = { text = "Nobody synced yet", disabled = true } end
@@ -825,19 +845,21 @@ local function BuildCompare(page)
     page.foot:SetPoint("LEFT", b3, "RIGHT", 8, 0); page.foot:SetJustifyH("RIGHT"); page.foot:SetWordWrap(false)
 end
 
+-- A checkbox tied to an option
 local function Check(parent, label, key, default, y, onchange)
-    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
 
-    cb:SetPoint("TOPLEFT", 0, y); cb:SetSize(24, 24)
+    checkbox:SetPoint("TOPLEFT", 0, y); checkbox:SetSize(24, 24)
 
-    cb.text = cb:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); cb.text:SetPoint("LEFT", cb, "RIGHT", 2, 0); cb.text:SetText(label); cb.text:SetTextColor(.84, .86, .92)
+    checkbox.text = checkbox:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); checkbox.text:SetPoint("LEFT", checkbox, "RIGHT", 2, 0); checkbox.text:SetText(label); checkbox.text:SetTextColor(.84, .86, .92)
 
-    cb:SetChecked(S.Opt(key, default))
-    cb:SetScript("OnClick", function(self) SterlingQuestDB.opts[key] = self:GetChecked() and true or false; if onchange then onchange() end end)
+    checkbox:SetChecked(S.Opt(key, default))
+    checkbox:SetScript("OnClick", function(self) SterlingQuestDB.opts[key] = self:GetChecked() and true or false; if onchange then onchange() end end)
 
-    return cb
+    return checkbox
 end
 
+-- "5 minutes ago", "3 days ago"
 local function ago(t)
     if not t then return "never" end
 
@@ -846,6 +868,7 @@ local function ago(t)
     if d < 60 then return d .. "s ago" elseif d < 3600 then return math.floor(d / 60) .. " min ago" else return math.floor(d / 3600) .. "h " .. math.floor(d % 3600 / 60) .. "m ago" end
 end
 
+-- "5m", "3d"
 local function agoShort(t)
     if not t then return nil end
 
@@ -860,8 +883,8 @@ local function partnerRGB(name)
 
     if prof and prof.color then return S.ColorRGB(prof.color) end
 
-    local cls = S.PartnerClass and S.PartnerClass(name)
-    local c = cls and RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls]
+    local classToken = S.PartnerClass and S.PartnerClass(name)
+    local c = classToken and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken]
 
     if c then return c.r, c.g, c.b end
 
@@ -873,6 +896,7 @@ end
 ---------------------------------------------------------------------------
 local profWin
 
+-- The Your profile window: display name, colour, face
 local function buildProfile()
     profWin = Window("SterlingQuestProfile", 340, 274, "Your profile")
 
@@ -912,18 +936,18 @@ local function buildProfile()
 
     for row, female in ipairs({ false, true }) do
         for i, race in ipairs(S.RACES) do
-            local b = CreateFrame("Button", nil, page); b:SetSize(28, 28); b:SetPoint("TOPLEFT", 6 + (i - 1) * 34, y - (row - 1) * 34)
+            local button = CreateFrame("Button", nil, page); button:SetSize(28, 28); button:SetPoint("TOPLEFT", 6 + (i - 1) * 34, y - (row - 1) * 34)
 
-            b.sel = b:CreateTexture(nil, "BACKGROUND"); b.sel:SetPoint("TOPLEFT", -2, 2); b.sel:SetPoint("BOTTOMRIGHT", 2, -2); b.sel:SetColorTexture(S.AR, S.AG, S.AB, 1)
-            b.back = b:CreateTexture(nil, "BORDER"); b.back:SetAllPoints(); b.back:SetColorTexture(.05, .05, .08, 1)
-            b.face = b:CreateTexture(nil, "ARTWORK"); b.face:SetPoint("TOPLEFT", 1, -1); b.face:SetPoint("BOTTOMRIGHT", -1, 1); S.SetFace(b.face, race, female)
-            b.race, b.female = race, female
+            button.sel = button:CreateTexture(nil, "BACKGROUND"); button.sel:SetPoint("TOPLEFT", -2, 2); button.sel:SetPoint("BOTTOMRIGHT", 2, -2); button.sel:SetColorTexture(S.AR, S.AG, S.AB, 1)
+            button.back = button:CreateTexture(nil, "BORDER"); button.back:SetAllPoints(); button.back:SetColorTexture(.05, .05, .08, 1)
+            button.face = button:CreateTexture(nil, "ARTWORK"); button.face:SetPoint("TOPLEFT", 1, -1); button.face:SetPoint("BOTTOMRIGHT", -1, 1); S.SetFace(button.face, race, female)
+            button.race, button.female = race, female
 
-            b:SetScript("OnClick", function() local pr = S.Profile(); pr.race = race; pr.female = female or nil; S.SendProfile(); S.UI_Update() end)
-            b:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:AddLine(S.RACE_NAME[race] .. (female and " (female)" or " (male)")); GameTooltip:Show() end)
-            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            button:SetScript("OnClick", function() local profile = S.Profile(); profile.race = race; profile.female = female or nil; S.SendProfile(); S.UI_Update() end)
+            button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:AddLine(S.RACE_NAME[race] .. (female and " (female)" or " (male)")); GameTooltip:Show() end)
+            button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-            ui.raceBtns[#ui.raceBtns + 1] = b
+            ui.raceBtns[#ui.raceBtns + 1] = button
         end
     end
 
@@ -933,17 +957,17 @@ local function buildProfile()
     ui.colorBtns = {}
 
     for i, c in ipairs(S.COLORS) do
-        local b = CreateFrame("Button", nil, page); b:SetSize(22, 18); b:SetPoint("TOPLEFT", 6 + (i - 1) * 30, y)
+        local button = CreateFrame("Button", nil, page); button:SetSize(22, 18); button:SetPoint("TOPLEFT", 6 + (i - 1) * 30, y)
 
-        b.sel = b:CreateTexture(nil, "BACKGROUND"); b.sel:SetPoint("TOPLEFT", -2, 2); b.sel:SetPoint("BOTTOMRIGHT", 2, -2); b.sel:SetColorTexture(1, 1, 1, 1)
-        b.sw = b:CreateTexture(nil, "ARTWORK"); b.sw:SetAllPoints(); b.sw:SetColorTexture(c.rgb[1], c.rgb[2], c.rgb[3], 1)
-        b.key = c.key
+        button.sel = button:CreateTexture(nil, "BACKGROUND"); button.sel:SetPoint("TOPLEFT", -2, 2); button.sel:SetPoint("BOTTOMRIGHT", 2, -2); button.sel:SetColorTexture(1, 1, 1, 1)
+        button.sw = button:CreateTexture(nil, "ARTWORK"); button.sw:SetAllPoints(); button.sw:SetColorTexture(c.rgb[1], c.rgb[2], c.rgb[3], 1)
+        button.key = c.key
 
-        b:SetScript("OnClick", function() S.Profile().color = c.key; S.SendProfile(); S.UI_Update() end)
-        b:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:AddLine(c.name); GameTooltip:Show() end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        button:SetScript("OnClick", function() S.Profile().color = c.key; S.SendProfile(); S.UI_Update() end)
+        button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:AddLine(c.name); GameTooltip:Show() end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        ui.colorBtns[i] = b
+        ui.colorBtns[i] = button
     end
 
     y = y - 30
@@ -954,31 +978,34 @@ local function buildProfile()
     profWin:SetScale(S.Opt("scale", 1))
 end
 
+-- Opens Your profile
 function S.UI_Profile()
     if not profWin then buildProfile() end
 
     profWin:Show(); S.UI_Update()
 end
 
+-- Shows the current profile choices in the window
 local function refreshProfile()
     if not (profWin and profWin:IsShown()) then return end
 
-    local pg = profWin
+    local page = profWin
     local prof = S.Profile()
     local r, g, b = S.ColorRGB(prof.color)
 
-    for _, bt in ipairs(pg.raceBtns) do bt.sel:SetShown(bt.race == prof.race and bt.female == (prof.female and true or false)); bt.face:SetVertexColor(r, g, b) end
-    for _, bt in ipairs(pg.colorBtns) do bt.sel:SetShown(bt.key == prof.color) end
+    for _, bt in ipairs(page.raceBtns) do bt.sel:SetShown(bt.race == prof.race and bt.female == (prof.female and true or false)); bt.face:SetVertexColor(r, g, b) end
+    for _, bt in ipairs(page.colorBtns) do bt.sel:SetShown(bt.key == prof.color) end
 
-    S.SetFace(pg.preview.face, prof.race, prof.female); pg.preview.face:SetVertexColor(r, g, b); pg.preview.edge:SetColorTexture(r, g, b, 1)
+    S.SetFace(page.preview.face, prof.race, prof.female); page.preview.face:SetVertexColor(r, g, b); page.preview.edge:SetColorTexture(r, g, b, 1)
 
-    if not pg.nameBox:HasFocus() then pg.nameBox:SetText(prof.name or "") end
+    if not page.nameBox:HasFocus() then page.nameBox:SetText(prof.name or "") end
 end
 
 -- Status light, Blizzard's friends-list icons: green online, grey offline, yellow "can't tell".
 -- Falls back to a small flat dot if those files aren't on this client.
 local STATUS = { online = { "Interface\\FriendsFrame\\StatusIcon-Online", .35, .8, .45 }, offline = { "Interface\\FriendsFrame\\StatusIcon-Offline", .45, .45, .48 },
                  unknown = { "Interface\\FriendsFrame\\StatusIcon-Away", .9, .75, .3 } }
+-- Sets an online / offline status icon
 local function SetStatus(tex, state)
     local d = STATUS[state] or STATUS.offline
 
@@ -988,18 +1015,19 @@ end
 
 -- A box holding a link you can copy (click selects it all, Ctrl+C). Typing can't change it.
 function S.UI_LinkBox(parent, text)
-    local eb = CreateFrame("EditBox", nil, parent, "InputBoxTemplate"); eb:SetHeight(20); eb:SetAutoFocus(false)
+    local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate"); editBox:SetHeight(20); editBox:SetAutoFocus(false)
 
-    eb:SetFontObject(S.FONT_SMALL); eb:SetText(text); eb:SetCursorPosition(0)
-    eb:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    eb:SetScript("OnMouseUp", function(self) self:HighlightText() end)
-    eb:SetScript("OnTextChanged", function(self, user) if user then self:SetText(text); self:HighlightText() end end)
-    eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    editBox:SetFontObject(S.FONT_SMALL); editBox:SetText(text); editBox:SetCursorPosition(0)
+    editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    editBox:SetScript("OnMouseUp", function(self) self:HighlightText() end)
+    editBox:SetScript("OnTextChanged", function(self, user) if user then self:SetText(text); self:HighlightText() end end)
+    editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
-    return eb
+    return editBox
 end
 
+-- The Sync tab: you, your partners, the last sync
 local function BuildSync(page)
     local y = 0
 
@@ -1103,141 +1131,144 @@ local function BuildSync(page)
     page.sb:SetPoint("TOPRIGHT", page.listBox, "TOPRIGHT", -1, -2); page.sb:SetPoint("BOTTOMRIGHT", page.listBox, "BOTTOMRIGHT", -1, 2)
 
     page.more = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.more:SetPoint("TOPRIGHT", page.listBox, "BOTTOMRIGHT", -2, -1); page.more:SetTextColor(.5, .55, .65)   -- under the list, clear of + Add
+
+    -- A partner row, made when first needed
     page.Row = function(i)
-        local r = page.rows[i]
+        local row = page.rows[i]
 
-        if r then return r end
+        if row then return row end
 
-        r = CreateFrame("Frame", nil, page.listBox); r:SetHeight(ROWH); r:SetPoint("LEFT", 2, 0); r:SetPoint("RIGHT", -8, 0)
-        r.sel = r:CreateTexture(nil, "BACKGROUND"); r.sel:SetAllPoints(); r.sel:SetColorTexture(S.AR, S.AG, S.AB, .1); r.sel:Hide()
-        r.line = r:CreateTexture(nil, "BACKGROUND", nil, 1); r.line:SetPoint("BOTTOMLEFT", 4, 0); r.line:SetPoint("BOTTOMRIGHT", -4, 0); r.line:SetHeight(1); r.line:SetColorTexture(1, 1, 1, .06)
+        row = CreateFrame("Frame", nil, page.listBox); row:SetHeight(ROWH); row:SetPoint("LEFT", 2, 0); row:SetPoint("RIGHT", -8, 0)
+        row.sel = row:CreateTexture(nil, "BACKGROUND"); row.sel:SetAllPoints(); row.sel:SetColorTexture(S.AR, S.AG, S.AB, .1); row.sel:Hide()
+        row.line = row:CreateTexture(nil, "BACKGROUND", nil, 1); row.line:SetPoint("BOTTOMLEFT", 4, 0); row.line:SetPoint("BOTTOMRIGHT", -4, 0); row.line:SetHeight(1); row.line:SetColorTexture(1, 1, 1, .06)
 
         -- eye: show in tooltips and the quest log (sync on/off lives in the right-click menu)
-        r.eye = CreateFrame("Button", nil, r); r.eye:SetSize(18, 18); r.eye:SetPoint("LEFT", 6, 0)
-        r.eye.tex = r.eye:CreateTexture(nil, "ARTWORK"); r.eye.tex:SetAllPoints()
+        row.eye = CreateFrame("Button", nil, row); row.eye:SetSize(18, 18); row.eye:SetPoint("LEFT", 6, 0)
+        row.eye.tex = row.eye:CreateTexture(nil, "ARTWORK"); row.eye.tex:SetAllPoints()
 
-        r.eye:SetScript("OnClick", function()
-            if not r.p then return end
+        row.eye:SetScript("OnClick", function()
+            if not row.p then return end
 
-            r.p.show = (r.p.show == false) and true or false
+            row.p.show = (row.p.show == false) and true or false
 
             if S.UpdateQuestLogStatus then pcall(S.UpdateQuestLogStatus) end
 
             S.UI_Update()
         end)
 
-        r.eye:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:AddLine("Show in tooltips and the quest log", 1, 1, 1); GameTooltip:AddLine((r.p and S.PartnerShown(r.p)) and "On. Click to hide their status lines." or "Off. Click to show their status lines.", .7, .74, .84, true); GameTooltip:Show() end)
-        r.eye:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row.eye:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:AddLine("Show in tooltips and the quest log", 1, 1, 1); GameTooltip:AddLine((row.p and S.PartnerShown(row.p)) and "On. Click to hide their status lines." or "Off. Click to show their status lines.", .7, .74, .84, true); GameTooltip:Show() end)
+        row.eye:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
         -- face, softly tinted with their colour, with a thin outline in it
-        r.faceBack = r:CreateTexture(nil, "BORDER"); r.faceBack:SetSize(22, 22); r.faceBack:SetPoint("LEFT", 30, 0); r.faceBack:SetColorTexture(.05, .05, .08, 1)
-        r.face = r:CreateTexture(nil, "ARTWORK"); r.face:SetPoint("TOPLEFT", r.faceBack, 1, -1); r.face:SetPoint("BOTTOMRIGHT", r.faceBack, -1, 1)
-        r.faceEdge = r:CreateTexture(nil, "BACKGROUND", nil, 2); r.faceEdge:SetPoint("TOPLEFT", r.faceBack, -1, 1); r.faceEdge:SetPoint("BOTTOMRIGHT", r.faceBack, 1, -1)
+        row.faceBack = row:CreateTexture(nil, "BORDER"); row.faceBack:SetSize(22, 22); row.faceBack:SetPoint("LEFT", 30, 0); row.faceBack:SetColorTexture(.05, .05, .08, 1)
+        row.face = row:CreateTexture(nil, "ARTWORK"); row.face:SetPoint("TOPLEFT", row.faceBack, 1, -1); row.face:SetPoint("BOTTOMRIGHT", row.faceBack, -1, 1)
+        row.faceEdge = row:CreateTexture(nil, "BACKGROUND", nil, 2); row.faceEdge:SetPoint("TOPLEFT", row.faceBack, -1, 1); row.faceEdge:SetPoint("BOTTOMRIGHT", row.faceBack, 1, -1)
 
         -- star: favourite (up to 5; favourites sit on top here and in the Companion app)
-        r.star = CreateFrame("Button", nil, r); r.star:SetSize(13, 13); r.star:SetFrameLevel(r:GetFrameLevel() + 3)
+        row.star = CreateFrame("Button", nil, row); row.star:SetSize(13, 13); row.star:SetFrameLevel(row:GetFrameLevel() + 3)
 
-        r.star:SetPoint("CENTER", r.faceBack, "TOPLEFT", 1, -1)   -- a small badge on the face's corner
+        row.star:SetPoint("CENTER", row.faceBack, "TOPLEFT", 1, -1)   -- a small badge on the face's corner
 
-        r.star.tex = r.star:CreateTexture(nil, "ARTWORK"); r.star.tex:SetAllPoints()
+        row.star.tex = row.star:CreateTexture(nil, "ARTWORK"); row.star.tex:SetAllPoints()
 
-        if not S.TexOK(r.star.tex, "Interface\\AddOns\\Sterling\\Media\\star") then pcall(r.star.tex.SetAtlas, r.star.tex, "PetJournal-FavoritesIcon") end
+        if not S.TexOK(row.star.tex, "Interface\\AddOns\\Sterling\\Media\\star") then pcall(row.star.tex.SetAtlas, row.star.tex, "PetJournal-FavoritesIcon") end
 
-        r.star:SetScript("OnClick", function()
-            if not r.p then return end
+        row.star:SetScript("OnClick", function()
+            if not row.p then return end
 
-            local ok, why = S.ToggleFav(r.p)
+            local ok, why = S.ToggleFav(row.p)
 
-            if not ok and why == "noid" then S.msg("Favourites need one live sync with " .. S.PartnerLabel(r.p.name) .. " first (Sterling 0.2.38 or newer on their side).") end
+            if not ok and why == "noid" then S.msg("Favourites need one live sync with " .. S.PartnerLabel(row.p.name) .. " first (Sterling 0.2.38 or newer on their side).") end
 
             S.UI_Update()
         end)
 
-        r.star:SetScript("OnEnter", function(self)
+        row.star:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
 
-            local fav = r.p and S.IsFav(r.p)
+            local fav = row.p and S.IsFav(row.p)
 
             GameTooltip:AddLine(fav and "Favourite" or "Add to favourites", 1, 1, 1)
 
-            if not (r.p and S.ValidGUID(r.p.guid)) then GameTooltip:AddLine("Needs one live sync with them first.", .95, .77, .42, true)
+            if not (row.p and S.ValidGUID(row.p.guid)) then GameTooltip:AddLine("Needs one live sync with them first.", .95, .77, .42, true)
             elseif fav then GameTooltip:AddLine("Shown on top. Click to remove.", .7, .74, .84, true)
             elseif #S.Favs() >= S.MAX_FAVS then GameTooltip:AddLine("You can favourite up to " .. S.MAX_FAVS .. " partners.", .95, .77, .42, true)
             else GameTooltip:AddLine("Favourites show on top, here and in the Companion app.", .7, .74, .84, true) end
             GameTooltip:Show()
         end)
 
-        r.star:SetScript("OnLeave", function() GameTooltip:Hide(); r.paintStar() end)
+        row.star:SetScript("OnLeave", function() GameTooltip:Hide(); row.paintStar() end)
 
         -- gold when a favourite; otherwise only shown (faint) while the row is under the mouse
-        r.paintStar = function()
-            local p = r.p
+        row.paintStar = function()
+            local partner = row.p
 
-            if not p then r.star:Hide() return end
+            if not partner then row.star:Hide() return end
 
-            local hover = r:IsMouseOver()
-            local fav = S.IsFav(p)
+            local hover = row:IsMouseOver()
+            local fav = S.IsFav(partner)
 
             -- a favourite's star sits in front of their name; otherwise it's a faint badge on the face, on hover
-            r.star:ClearAllPoints()
+            row.star:ClearAllPoints()
 
-            if fav then r.star:SetSize(11, 11); r.star:SetPoint("TOPLEFT", r, "TOPLEFT", 58, -3)
-            else r.star:SetSize(13, 13); r.star:SetPoint("CENTER", r.faceBack, "TOPLEFT", 1, -1) end
-            if r.name then r.name:SetPoint("TOPLEFT", fav and 72 or 58, -3) end
-            if fav then r.star.tex:SetVertexColor(1, .82, .25, 1); r.star:Show()
+            if fav then row.star:SetSize(11, 11); row.star:SetPoint("TOPLEFT", row, "TOPLEFT", 58, -3)
+            else row.star:SetSize(13, 13); row.star:SetPoint("CENTER", row.faceBack, "TOPLEFT", 1, -1) end
+            if row.name then row.name:SetPoint("TOPLEFT", fav and 72 or 58, -3) end
+            if fav then row.star.tex:SetVertexColor(1, .82, .25, 1); row.star:Show()
             elseif hover then
-                if S.ValidGUID(p.guid) then r.star.tex:SetVertexColor(.8, .82, .88, .8) else r.star.tex:SetVertexColor(.5, .5, .55, .4) end
+                if S.ValidGUID(partner.guid) then row.star.tex:SetVertexColor(.8, .82, .88, .8) else row.star.tex:SetVertexColor(.5, .5, .55, .4) end
 
-                r.star:Show()
-            else r.star:Hide() end
+                row.star:Show()
+            else row.star:Hide() end
         end
 
         -- right column: status word on top, sync age (or "Sync disabled") under it
-        r.stat = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.stat:SetPoint("TOPRIGHT", -4, -3); r.stat:SetJustifyH("RIGHT"); r.stat:SetWordWrap(false)
-        r.last = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.last:SetPoint("TOPRIGHT", -4, -16); r.last:SetJustifyH("RIGHT"); r.last:SetWordWrap(false)
+        row.stat = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.stat:SetPoint("TOPRIGHT", -4, -3); row.stat:SetJustifyH("RIGHT"); row.stat:SetWordWrap(false)
+        row.last = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.last:SetPoint("TOPRIGHT", -4, -16); row.last:SetJustifyH("RIGHT"); row.last:SetWordWrap(false)
 
         -- left column: name, then character · level · version
         -- their Sterling version, just left of the status word (amber "Outdated" / red when they can't sync)
-        r.ver = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.ver:SetPoint("TOPRIGHT", r.stat, "TOPLEFT", -8, 0); r.ver:SetJustifyH("RIGHT"); r.ver:SetWordWrap(false)
-        r.name = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.name:SetPoint("TOPLEFT", 58, -3); r.name:SetPoint("RIGHT", r.ver, "LEFT", -8, 0); r.name:SetJustifyH("LEFT"); r.name:SetWordWrap(false)
-        r.st = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.st:SetPoint("TOPLEFT", 58, -16); r.st:SetPoint("RIGHT", r.last, "LEFT", -8, 0); r.st:SetJustifyH("LEFT"); r.st:SetTextColor(.6, .64, .74); r.st:SetWordWrap(false)
+        row.ver = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.ver:SetPoint("TOPRIGHT", row.stat, "TOPLEFT", -8, 0); row.ver:SetJustifyH("RIGHT"); row.ver:SetWordWrap(false)
+        row.name = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.name:SetPoint("TOPLEFT", 58, -3); row.name:SetPoint("RIGHT", row.ver, "LEFT", -8, 0); row.name:SetJustifyH("LEFT"); row.name:SetWordWrap(false)
+        row.st = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.st:SetPoint("TOPLEFT", 58, -16); row.st:SetPoint("RIGHT", row.last, "LEFT", -8, 0); row.st:SetJustifyH("LEFT"); row.st:SetTextColor(.6, .64, .74); row.st:SetWordWrap(false)
 
         -- click: select; right-click: menu (sync on/off, compare, details...)
-        r.hit = CreateFrame("Button", nil, r); r.hit:SetPoint("TOPLEFT", 26, 0); r.hit:SetPoint("BOTTOMRIGHT", 0, 0)
+        row.hit = CreateFrame("Button", nil, row); row.hit:SetPoint("TOPLEFT", 26, 0); row.hit:SetPoint("BOTTOMRIGHT", 0, 0)
 
-        r.hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        r.hit:SetScript("OnClick", function(_, btn)
-            if not r.p then return end
-            if btn == "RightButton" then S.UI_PartnerMenu(r.p.name) return end
+        row.hit:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row.hit:SetScript("OnClick", function(_, btn)
+            if not row.p then return end
+            if btn == "RightButton" then S.UI_PartnerMenu(row.p.name) return end
 
-            page.selected = r.p.name; S.UI_Update()
+            page.selected = row.p.name; S.UI_Update()
         end)
 
-        r.hit:SetScript("OnEnter", function(self) r.sel:SetAlpha(.6); r.sel:Show(); r.paintStar(); if r.p then S.UI_PartnerTooltip(self, r.p, r.cantTell) end end)
-        r.hit:SetScript("OnLeave", function() r.sel:SetAlpha(1); if page.selected ~= (r.p and r.p.name) then r.sel:Hide() end; GameTooltip:Hide(); r.paintStar() end)
+        row.hit:SetScript("OnEnter", function(self) row.sel:SetAlpha(.6); row.sel:Show(); row.paintStar(); if row.p then S.UI_PartnerTooltip(self, row.p, row.cantTell) end end)
+        row.hit:SetScript("OnLeave", function() row.sel:SetAlpha(1); if page.selected ~= (row.p and row.p.name) then row.sel:Hide() end; GameTooltip:Hide(); row.paintStar() end)
 
-        page.rows[i] = r
+        page.rows[i] = row
 
-        return r
+        return row
     end
 
     y = y - (page.VISIBLE * ROWH + 4) - 10
 
     -- this session
-    local st = CreateFrame("Frame", nil, page); st:SetPoint("TOPLEFT", 0, y); st:SetPoint("RIGHT", 0, 0); st:SetHeight(96)
+    local frame = CreateFrame("Frame", nil, page); frame:SetPoint("TOPLEFT", 0, y); frame:SetPoint("RIGHT", 0, 0); frame:SetHeight(96)
 
-    page.stats = st
-    st.title = st:CreateFontString(nil, "OVERLAY", "GameFontNormal"); st.title:SetPoint("TOPLEFT", 4, 0); st.title:SetTextColor(.96, .97, 1)
+    page.stats = frame
+    frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"); frame.title:SetPoint("TOPLEFT", 4, 0); frame.title:SetTextColor(.96, .97, 1)
 
-    st.title:SetText("This session  |cff8a93a8since login or reload|r")
+    frame.title:SetText("This session  |cff8a93a8since login or reload|r")
 
     page.v = {}
 
+    -- One label and value in the This session stats
     local function cell(label, col, row)
         local x = col == 1 and 4 or 176
         local yy = -20 - (row - 1) * 16
-        local l = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); l:SetPoint("TOPLEFT", x, yy); l:SetText(label); l:SetTextColor(S.LabelColor())
-        local v = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); v:SetPoint("TOPLEFT", x + 62, yy); v:SetPoint("RIGHT", col == 1 and -174 or -4, 0); v:SetJustifyH("LEFT"); v:SetTextColor(.9, .92, 1); v:SetWordWrap(false)
+        local l = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); l:SetPoint("TOPLEFT", x, yy); l:SetText(label); l:SetTextColor(S.LabelColor())
+        local v = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); v:SetPoint("TOPLEFT", x + 62, yy); v:SetPoint("RIGHT", col == 1 and -174 or -4, 0); v:SetJustifyH("LEFT"); v:SetTextColor(.9, .92, 1); v:SetWordWrap(false)
 
         return v
     end
@@ -1245,18 +1276,18 @@ local function BuildSync(page)
     page.v.syncs = cell("Syncs", 1, 1); page.v.changes = cell("Changes", 2, 1)
     page.v.resent = cell("Resent", 1, 2); page.v.msgs = cell("Messages", 2, 2)
 
-    local ll = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); ll:SetPoint("TOPLEFT", 4, -52); ll:SetText("Last"); ll:SetTextColor(S.LabelColor())
+    local ll = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); ll:SetPoint("TOPLEFT", 4, -52); ll:SetText("Last"); ll:SetTextColor(S.LabelColor())
 
-    page.v.last = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.last:SetPoint("TOPLEFT", 66, -52); page.v.last:SetPoint("RIGHT", -4, 0); page.v.last:SetJustifyH("LEFT"); page.v.last:SetWordWrap(false)
+    page.v.last = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.last:SetPoint("TOPLEFT", 66, -52); page.v.last:SetPoint("RIGHT", -4, 0); page.v.last:SetJustifyH("LEFT"); page.v.last:SetWordWrap(false)
 
     -- the Companion app (only when its companion add-on is installed)
-    page.appL = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appL:SetPoint("TOPLEFT", 4, -67); page.appL:SetText("App"); page.appL:SetTextColor(S.LabelColor())
-    page.v.app = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.app:SetPoint("TOPLEFT", 66, -67); page.v.app:SetPoint("RIGHT", -4, 0); page.v.app:SetJustifyH("LEFT"); page.v.app:SetWordWrap(false)
+    page.appL = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appL:SetPoint("TOPLEFT", 4, -67); page.appL:SetText("App"); page.appL:SetTextColor(S.LabelColor())
+    page.v.app = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.v.app:SetPoint("TOPLEFT", 66, -67); page.v.app:SetPoint("RIGHT", -4, 0); page.v.app:SetJustifyH("LEFT"); page.v.app:SetWordWrap(false)
 
     -- the app is installed but its helper add-on isn't running (a new add-on needs a full game restart)
-    page.appWarn = st:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appWarn:SetPoint("TOPLEFT", 4, -67); page.appWarn:SetPoint("RIGHT", -4, 0); page.appWarn:SetJustifyH("LEFT"); page.appWarn:SetJustifyV("TOP"); page.appWarn:SetWordWrap(true); page.appWarn:SetTextColor(.95, .77, .42); page.appWarn:Hide()
-    page.progBg = st:CreateTexture(nil, "ARTWORK"); page.progBg:SetPoint("TOPLEFT", page.v.last, "BOTTOMLEFT", 0, -1); page.progBg:SetPoint("RIGHT", -4, 0); page.progBg:SetHeight(2); page.progBg:SetColorTexture(.2, .18, .14, 1); page.progBg:Hide()
-    page.prog = st:CreateTexture(nil, "OVERLAY"); page.prog:SetPoint("TOPLEFT", page.progBg, "TOPLEFT", 0, 0); page.prog:SetHeight(2); page.prog:SetColorTexture(.49, .89, .64, 1); page.prog:Hide()
+    page.appWarn = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.appWarn:SetPoint("TOPLEFT", 4, -67); page.appWarn:SetPoint("RIGHT", -4, 0); page.appWarn:SetJustifyH("LEFT"); page.appWarn:SetJustifyV("TOP"); page.appWarn:SetWordWrap(true); page.appWarn:SetTextColor(.95, .77, .42); page.appWarn:Hide()
+    page.progBg = frame:CreateTexture(nil, "ARTWORK"); page.progBg:SetPoint("TOPLEFT", page.v.last, "BOTTOMLEFT", 0, -1); page.progBg:SetPoint("RIGHT", -4, 0); page.progBg:SetHeight(2); page.progBg:SetColorTexture(.2, .18, .14, 1); page.progBg:Hide()
+    page.prog = frame:CreateTexture(nil, "OVERLAY"); page.prog:SetPoint("TOPLEFT", page.progBg, "TOPLEFT", 0, 0); page.prog:SetHeight(2); page.prog:SetColorTexture(.49, .89, .64, 1); page.prog:Hide()
 
     -- Sync all at the bottom
     page.syncAll = Button(page, "Sync all", 100); page.syncAll:SetPoint("BOTTOM", 0, 0)   -- same baseline as the other tabs' bottom buttons
@@ -1276,26 +1307,26 @@ local function BuildSync(page)
 end
 
 -- Hover card for a partner: every name they go by, plus their addon version.
-function S.UI_PartnerTooltip(owner, p, attention)
-    local prof = S.profiles and S.profiles[p.name]
-    local nick = S.Nickname(p.name)
-    local sn = S.snaps[p.name]
+function S.UI_PartnerTooltip(owner, partner, attention)
+    local prof = S.profiles and S.profiles[partner.name]
+    local nick = S.Nickname(partner.name)
+    local snap = S.snaps[partner.name]
 
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(S.PartnerLabel(p.name), 1, 1, 1)
-    GameTooltip:AddDoubleLine("Character", p.name, .56, .6, .7, .9, .92, 1)
+    GameTooltip:AddLine(S.PartnerLabel(partner.name), 1, 1, 1)
+    GameTooltip:AddDoubleLine("Character", partner.name, .56, .6, .7, .9, .92, 1)
 
     do
-        local on, how = S.PartnerStatus(p.name)
-        local txt = on and (({ addon = "online, Sterling answering", group = "online, in your group", friend = "online (friends list)", guild = "online (guild)" })[how] or "online") or (how and "offline" or "can't tell (not a friend or guildmate)")
+        local online, how = S.PartnerStatus(partner.name)
+        local txt = online and (({ addon = "online, Sterling answering", group = "online, in your group", friend = "online (friends list)", guild = "online (guild)" })[how] or "online") or (how and "offline" or "can't tell (not a friend or guildmate)")
 
-        GameTooltip:AddDoubleLine("Status", txt, .56, .6, .7, on and .49 or 1, on and .89 or .61, on and .64 or .57)
+        GameTooltip:AddDoubleLine("Status", txt, .56, .6, .7, online and .49 or 1, online and .89 or .61, online and .64 or .57)
     end
 
     GameTooltip:AddDoubleLine("Their chosen name", (prof and prof.name and prof.name ~= "" and prof.name) or "none sent", .56, .6, .7, .9, .92, 1)
     GameTooltip:AddDoubleLine("Your nickname", nick or "none", .56, .6, .7, nick and .54 or .6, nick and .72 or .64, nick and 1 or .74)
 
-    local vs, vwho, ver = S.VersionState(p.name)
+    local vs, vwho, ver = S.VersionState(partner.name)
     local vr, vg, vb = .9, .92, 1
 
     if vs == "nosync" then vr, vg, vb = 1, .61, .57 elseif vs == "older" or vs == "newer" then vr, vg, vb = .95, .77, .42 end
@@ -1311,35 +1342,35 @@ function S.UI_PartnerTooltip(owner, p, attention)
     end
 
     do
-        local ks = S.KeyState(p.name)
+        local ks = S.KeyState(partner.name)
 
         GameTooltip:AddDoubleLine("Offline sync", ks == "signed" and "ready (keys swapped)" or "needs one live sync", .56, .6, .7, ks == "signed" and .49 or .95, ks == "signed" and .89 or .77, ks == "signed" and .64 or .42)
     end
 
     if S.AppPresent and S.AppPresent() then
-        local prob = S.AppProblem and S.AppProblem(p.name)
-        local paired = p.guid and S.AppPairKey and S.AppPairKey(p.guid)
+        local prob = S.AppProblem and S.AppProblem(partner.name)
+        local paired = partner.guid and S.AppPairKey and S.AppPairKey(partner.guid)
         local txt, r, g, b = "not paired", .6, .64, .74
 
         if prob then txt, r, g, b = "missing key, resync", .95, .77, .42
         elseif paired then txt, r, g, b = "paired", .49, .89, .64
-        elseif type(p.app) == "string" then txt, r, g, b = "they have it (v" .. p.app .. "), pairs when you're both next online", .95, .77, .42
-        elseif p.app == false then txt, r, g, b = "not installed", .62, .65, .72 end
+        elseif type(partner.app) == "string" then txt, r, g, b = "they have it (v" .. partner.app .. "), pairs when you're both next online", .95, .77, .42
+        elseif partner.app == false then txt, r, g, b = "not installed", .62, .65, .72 end
         GameTooltip:AddDoubleLine("Companion app", txt, .56, .6, .7, r, g, b)
 
-        if not prob and not paired and p.app == false then GameTooltip:AddLine(S.NOAPP_TIP, .7, .74, .84, true) end
+        if not prob and not paired and partner.app == false then GameTooltip:AddLine(S.NOAPP_TIP, .7, .74, .84, true) end
         if prob then GameTooltip:AddLine("The Companion app no longer has a key for you two (one of you reinstalled, or the pairing ended). Pair again in the app with a new code, then sync.", .7, .74, .84, true) end
     end
 
-    if sn and sn.level then GameTooltip:AddDoubleLine("Level", tostring(sn.level), .56, .6, .7, .9, .92, 1) end
+    if snap and snap.level then GameTooltip:AddDoubleLine("Level", tostring(snap.level), .56, .6, .7, .9, .92, 1) end
 
-    local ls = S.LastSynced(p.name)
+    local ls = S.LastSynced(partner.name)
 
     GameTooltip:AddDoubleLine("Last synced", ls and (agoShort(ls) .. "  (" .. date("%m/%d %I:%M %p", ls) .. ")") or "never", .56, .6, .7, .9, .92, 1)
 
     if attention then
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Can't tell if " .. S.PartnerLabel(p.name) .. " is online.", .95, .77, .42, true)
+        GameTooltip:AddLine("Can't tell if " .. S.PartnerLabel(partner.name) .. " is online.", .95, .77, .42, true)
         GameTooltip:AddLine("They're not on your friends list, in your guild or in your group, so the game won't say. Add them as a friend in game and the light turns green when they log in. Sync still works if they're online.", .7, .74, .84, true)
     end
 
@@ -1347,13 +1378,15 @@ function S.UI_PartnerTooltip(owner, p, attention)
     GameTooltip:Show()
 end
 
+-- Asks for a nickname for a partner
 function S.UI_SetNicknamePrompt(name)
     S.UI_Prompt("Nickname for " .. name, "Only you see this. It replaces their name everywhere in Sterling on your screen. Leave empty to use the name they chose.", S.Nickname(name) or "", "Save",
         function(text) S.SetNickname(name, text); S.UI_Update() end)
 end
 
+-- The right-click menu on a partner row
 function S.UI_PartnerMenu(name)
-    local p = S.FindPartner(name)
+    local partner = S.FindPartner(name)
     local label = S.PartnerLabel(name)
     local inGrp = (UnitInParty and UnitInParty(name)) or (UnitInRaid and UnitInRaid(name))
     local menu =
@@ -1371,9 +1404,9 @@ function S.UI_PartnerMenu(name)
         { text = "Catch up to them", disabled = S.snaps[name] == nil or not S.Opt("catchupTab", true), func = function() S.catchupWho = name; S.UI_Tab("catchup") end },
         { text = "Quest sharing...", disabled = not inGrp, func = function() if S.UI_ShareWindow then S.UI_ShareWindow(name) end end },
         { text = "Show detailed info", func = function() S.UI_PartnerInfo(name) end },
-        { text = "Show in tooltips and log", checked = p and S.PartnerShown(p), func = function() if p then p.show = (p.show == false) and true or false; if S.UpdateQuestLogStatus then pcall(S.UpdateQuestLogStatus) end; S.UI_Update() end end },
-        { text = "Sync with " .. label, checked = p and p.on, func = function() if p then p.on = not p.on; if p.on and S.PartnerOnline(p.name) then S.RequestPartner(p.name); S.ScheduleBroadcast() end; S.UI_Update() end end },
-        { text = (p and S.IsFav(p)) and "Remove from favourites" or "Add to favourites", disabled = not (p and S.ValidGUID(p.guid)) or (not S.IsFav(p) and #S.Favs() >= S.MAX_FAVS), func = function() if p then S.ToggleFav(p) end end },
+        { text = "Show in tooltips and log", checked = partner and S.PartnerShown(partner), func = function() if partner then partner.show = (partner.show == false) and true or false; if S.UpdateQuestLogStatus then pcall(S.UpdateQuestLogStatus) end; S.UI_Update() end end },
+        { text = "Sync with " .. label, checked = partner and partner.on, func = function() if partner then partner.on = not partner.on; if partner.on and S.PartnerOnline(partner.name) then S.RequestPartner(partner.name); S.ScheduleBroadcast() end; S.UI_Update() end end },
+        { text = (partner and S.IsFav(partner)) and "Remove from favourites" or "Add to favourites", disabled = not (partner and S.ValidGUID(partner.guid)) or (not S.IsFav(partner) and #S.Favs() >= S.MAX_FAVS), func = function() if partner then S.ToggleFav(partner) end end },
         { text = "Set nickname...", func = function() S.UI_SetNicknamePrompt(name) end },
         { text = "Clear nickname", disabled = S.Nickname(name) == nil, func = function() S.SetNickname(name, nil); S.UI_Update() end },
         { text = "Remove partner", danger = true, func = function() S.RemovePartner(name); S.UI_Update() end },
@@ -1382,8 +1415,9 @@ function S.UI_PartnerMenu(name)
     S.ShowMenu(menu, "cursor")
 end
 
+-- Fills the Sync tab
 local function UpdateSync(page)
-    local st = S.sync or {}
+    local sync = S.sync or {}
 
     do -- the You row
         local me, prof = page.me, S.Profile()
@@ -1401,7 +1435,7 @@ local function UpdateSync(page)
     local c = page.card
     local online, enabled = 0, 0
 
-    for _, p in ipairs(partners) do if p.on then enabled = enabled + 1; if S.PartnerOnline(p.name) then online = online + 1 end end end
+    for _, partner in ipairs(partners) do if partner.on then enabled = enabled + 1; if S.PartnerOnline(partner.name) then online = online + 1 end end end
 
     local autoOn = S.Opt("autoSync", true) and SterlingQuestDB.sync
 
@@ -1417,7 +1451,7 @@ local function UpdateSync(page)
     end
 
     -- rows: a window of VISIBLE partners starting at page.offset
-    for _, r in ipairs(page.rows) do r:Hide() end
+    for _, row in ipairs(page.rows) do row:Hide() end
 
     page.offset = math.max(0, math.min(page.offset or 0, math.max(0, #partners - page.VISIBLE)))
 
@@ -1431,60 +1465,60 @@ local function UpdateSync(page)
 
         shownRows = shownRows + 1
 
-        local r = page.Row(shownRows); r.p = p
+        local row = page.Row(shownRows); row.p = p
 
-        r:ClearAllPoints(); r:SetPoint("TOPLEFT", page.listBox, "TOPLEFT", 2, y); r:SetPoint("RIGHT", page.listBox, "RIGHT", -8, 0)
+        row:ClearAllPoints(); row:SetPoint("TOPLEFT", page.listBox, "TOPLEFT", 2, y); row:SetPoint("RIGHT", page.listBox, "RIGHT", -8, 0)
 
         local shown = S.PartnerShown(p)
 
-        r.eye.tex:SetTexture("Interface\\AddOns\\Sterling\\Media\\" .. (shown and "eye" or "eye-off"))
-        r.eye.tex:SetVertexColor(shown and 1 or .5, shown and 1 or .55, shown and 1 or .65, 1)
+        row.eye.tex:SetTexture("Interface\\AddOns\\Sterling\\Media\\" .. (shown and "eye" or "eye-off"))
+        row.eye.tex:SetVertexColor(shown and 1 or .5, shown and 1 or .55, shown and 1 or .65, 1)
 
-        local on, how = S.PartnerStatus(p.name)
-        local sn = S.snaps[p.name]
+        local online, how = S.PartnerStatus(p.name)
+        local snap = S.snaps[p.name]
         local cr, cg, cb = partnerRGB(p.name)
         local prof = S.profiles and S.profiles[p.name]
 
         -- face: a soft tint (their colour mixed toward white) so the portrait still reads; dimmed and grey when offline
-        S.SetFace(r.face, prof and prof.race or "Troll", prof and prof.female)
+        S.SetFace(row.face, prof and prof.race or "Troll", prof and prof.female)
 
-        local tr, tg, tb = .55 + .45 * cr, .55 + .45 * cg, .55 + .45 * cb
+        local trail, tg, tb = .55 + .45 * cr, .55 + .45 * cg, .55 + .45 * cb
 
-        r.face:SetVertexColor(tr, tg, tb); r.face:SetDesaturated(not on); r.face:SetAlpha(on and 1 or .55)
-        r.faceEdge:SetColorTexture(cr, cg, cb, on and .9 or .35)
-        r.paintStar()
-        r.name:SetText(S.PartnerLabel(p.name) .. (S.Nickname(p.name) and " |cff8a93a8*|r" or ""))
+        row.face:SetVertexColor(trail, tg, tb); row.face:SetDesaturated(not online); row.face:SetAlpha(online and 1 or .55)
+        row.faceEdge:SetColorTexture(cr, cg, cb, online and .9 or .35)
+        row.paintStar()
+        row.name:SetText(S.PartnerLabel(p.name) .. (S.Nickname(p.name) and " |cff8a93a8*|r" or ""))
 
-        if p.on then r.name:SetTextColor(.35 + .65 * cr, .35 + .65 * cg, .35 + .65 * cb) else r.name:SetTextColor(.6, .62, .7) end
+        if p.on then row.name:SetTextColor(.35 + .65 * cr, .35 + .65 * cg, .35 + .65 * cb) else row.name:SetTextColor(.6, .62, .7) end
 
         -- version beside the status word; second line: level, then character
         local vs, _, ver = S.VersionState(p.name)
 
-        if vs == "nosync" then r.ver:SetText(S.Mark("bad") .. "Update needed"); r.ver:SetTextColor(1, .61, .57)
-        elseif vs == "older" then r.ver:SetText(S.Mark("warn") .. "Outdated v" .. ver); r.ver:SetTextColor(.95, .77, .42)
-        elseif vs == "newer" then r.ver:SetText("v" .. ver .. " (newer)"); r.ver:SetTextColor(.95, .77, .42)
-        elseif ver then r.ver:SetText("v" .. ver); r.ver:SetTextColor(.6, .64, .74)
-        else r.ver:SetText("") end
+        if vs == "nosync" then row.ver:SetText(S.Mark("bad") .. "Update needed"); row.ver:SetTextColor(1, .61, .57)
+        elseif vs == "older" then row.ver:SetText(S.Mark("warn") .. "Outdated v" .. ver); row.ver:SetTextColor(.95, .77, .42)
+        elseif vs == "newer" then row.ver:SetText("v" .. ver .. " (newer)"); row.ver:SetTextColor(.95, .77, .42)
+        elseif ver then row.ver:SetText("v" .. ver); row.ver:SetTextColor(.6, .64, .74)
+        else row.ver:SetText("") end
         local bits = {}
 
-        if sn and sn.level then bits[#bits + 1] = "lvl " .. sn.level end
+        if snap and snap.level then bits[#bits + 1] = "lvl " .. snap.level end
         if S.PartnerLabel(p.name) ~= p.name then bits[#bits + 1] = p.name end
 
-        r.st:SetText(table.concat(bits, " · "))
+        row.st:SetText(table.concat(bits, " · "))
 
         -- status word
-        r.cantTell = not on and not how
+        row.cantTell = not online and not how
 
-        if on then r.stat:SetText(S.Mark("good") .. "Online"); r.stat:SetTextColor(.44, .84, .54)
-        elseif how then r.stat:SetText("Offline"); r.stat:SetTextColor(.55, .53, .48)
-        else r.stat:SetText(S.Mark("warn") .. "Can't tell"); r.stat:SetTextColor(.91, .72, .35) end
+        if online then row.stat:SetText(S.Mark("good") .. "Online"); row.stat:SetTextColor(.44, .84, .54)
+        elseif how then row.stat:SetText("Offline"); row.stat:SetTextColor(.55, .53, .48)
+        else row.stat:SetText(S.Mark("warn") .. "Can't tell"); row.stat:SetTextColor(.91, .72, .35) end
         -- sync state, worded like the Companion app (when they last synced is on the hover card)
         local _, stxt, sr, sg, sb2 = S.PartnerSyncState(p.name)
 
-        r.last:SetText(stxt or ""); r.last:SetTextColor(sr or .55, sg or .53, sb2 or .48)
-        r.sel:SetShown(page.selected == p.name); r.sel:SetAlpha(1)
-        r.line:SetShown(shownRows < page.VISIBLE)
-        r:Show()
+        row.last:SetText(stxt or ""); row.last:SetTextColor(sr or .55, sg or .53, sb2 or .48)
+        row.sel:SetShown(page.selected == p.name); row.sel:SetAlpha(1)
+        row.line:SetShown(shownRows < page.VISIBLE)
+        row:Show()
 
         y = y - 30
     end
@@ -1496,17 +1530,17 @@ local function UpdateSync(page)
 
     -- this session
     local v = page.v
-    local sIn, sOut, cIn, cOut, mIn, mOut = 0, 0, 0, 0, st.recv or 0, st.sent or 0
+    local sIn, sOut, cIn, cOut, mIn, mOut = 0, 0, 0, 0, sync.recv or 0, sync.sent or 0
 
-    for _, p in ipairs(partners) do
-        local ss = S.SessionStat(p.name)
+    for _, partner in ipairs(partners) do
+        local ss = S.SessionStat(partner.name)
 
         sIn = sIn + (ss.snapsIn or 0); sOut = sOut + (ss.snapsOut or 0); cIn = cIn + (ss.deltasIn or 0); cOut = cOut + (ss.deltasOut or 0)
     end
 
     v.syncs:SetText(sIn .. " in, " .. sOut .. " out")
     v.changes:SetText(cIn .. " in, " .. cOut .. " out")
-    v.resent:SetText(tostring(st.partsResent or 0) .. (st.throttled and st.throttled > 0 and ("  |cff8a93a8(" .. st.throttled .. " refused)|r") or ""))
+    v.resent:SetText(tostring(sync.partsResent or 0) .. (sync.throttled and sync.throttled > 0 and ("  |cff8a93a8(" .. sync.throttled .. " refused)|r") or ""))
     v.msgs:SetText(mOut .. " out, " .. mIn .. " in")
 
     do
@@ -1516,13 +1550,13 @@ local function UpdateSync(page)
         page.plabel:SetText("Partners " .. #partners .. "/" .. S.MAX_PARTNERS)
     end
 
-    local le = st.lastEvent
+    local le = sync.lastEvent
     local waiting
 
-    for name, p in pairs(S.pending or {}) do waiting = (p.mode == "full" and "Full sync" or (p.auto and "Auto sync" or "Sync")) .. " with " .. S.PartnerLabel(name) end
+    for name, pending in pairs(S.pending or {}) do waiting = (pending.mode == "full" and "Full sync" or (pending.auto and "Auto sync" or "Sync")) .. " with " .. S.PartnerLabel(name) end
 
     -- live progress: parts of a log coming in or going out, as a percentage plus a thin bar
-    local pr = st.prog
+    local pr = sync.prog
     local live = pr and (GetTime() - pr.t) < 6 and pr.got < pr.n
 
     if live then
@@ -1543,7 +1577,7 @@ local function UpdateSync(page)
         v.last:SetText("|cff8a93a8" .. date("%I:%M", le.at) .. "|r  " .. (good and "|cff7ee2a2" or "|cffd6dbe8") .. le.text .. "|r")
     else v.last:SetText("|cff8a93a8nothing yet this session|r") end
     do
-        local a = S.app or {}
+        local app = S.app or {}
         local present = S.AppPresent and S.AppPresent()
 
         page.appL:SetShown(present); page.v.app:SetShown(present)
@@ -1556,20 +1590,20 @@ local function UpdateSync(page)
         if present then
             local t
 
-            if not a.written or a.written == 0 then t = "|cff8a93a8Waiting for the Companion app|r"
+            if not app.written or app.written == 0 then t = "|cff8a93a8Waiting for the Companion app|r"
             else
                 local nprob = 0
 
-                for _ in pairs(a.problems or {}) do nprob = nprob + 1 end
+                for _ in pairs(app.problems or {}) do nprob = nprob + 1 end
 
-                t = "|cff8a93a8checked " .. date("%I:%M", a.written) .. "|r  "
+                t = "|cff8a93a8checked " .. date("%I:%M", app.written) .. "|r  "
 
                 if nprob > 0 then t = t .. "|cfff3c56b" .. nprob .. " missing key, resync|r"
-                elseif a.appUpdate or a.sterlingUpdate then t = t .. "|cfff3c56b" .. (a.appUpdate and "app" or "Sterling") .. " update available|r"
-                elseif a.got and #a.got > 0 then
+                elseif app.appUpdate or app.sterlingUpdate then t = t .. "|cfff3c56b" .. (app.appUpdate and "app" or "Sterling") .. " update available|r"
+                elseif app.got and #app.got > 0 then
                     local names = {}
 
-                    for _, n in ipairs(a.got) do names[#names + 1] = S.PartnerLabel(n) end
+                    for _, n in ipairs(app.got) do names[#names + 1] = S.PartnerLabel(n) end
 
                     t = t .. "|cff7ee2a2got " .. table.concat(names, ", ") .. "|r"
                 else t = t .. "|cffd6dbe8up to date|r" end
@@ -1588,6 +1622,7 @@ end
 ---------------------------------------------------------------------------
 local info
 
+-- The Detailed info window for one partner
 function S.UI_PartnerInfo(name)
     if not info then
         info = Window("SterlingQuestPartnerInfo", 400, 250, "Detailed info")
@@ -1610,13 +1645,13 @@ function S.UI_PartnerInfo(name)
 
     info.who = name
 
-    for _, l in ipairs(info.lines) do l[1]:Hide(); l[2]:Hide(); l[3]:Hide() end
+    for _, line in ipairs(info.lines) do line[1]:Hide(); line[2]:Hide(); line[3]:Hide() end
 
     info.title:SetText("Detailed info: " .. S.PartnerLabel(name))
 
     local ss, ps = S.SessionStat(name), S.PerStat(name)
     local conf, confAt, confLabel = S.Confirmed("W:" .. name)
-    local sn = S.snaps[name]
+    local snap = S.snaps[name]
     local prof = S.profiles and S.profiles[name]
     local rows =
     {
@@ -1629,10 +1664,10 @@ function S.UI_PartnerInfo(name)
         { "Resyncs", ("%d"):format(ss.resyncs or 0), ("%d"):format(ps.resyncs or 0) },
         { "Sessions", ("%d sent, %d got"):format(ss.sessOut or 0, ss.sessIn or 0), ("%d sent, %d got"):format(ps.sessOut or 0, ps.sessIn or 0) },
         { "Their copy of mine", conf and ((confLabel or ("#" .. conf)) .. ", " .. ago(confAt)) or "nothing confirmed yet" },
-        { "My copy of theirs", sn and (("#" .. tostring(sn.seq or 0)) .. (sn.label and sn.label ~= "" and (" " .. sn.label) or "") .. (sn.at and (", " .. ago(sn.at)) or "")) or "none" },
+        { "My copy of theirs", snap and (("#" .. tostring(snap.seq or 0)) .. (snap.label and snap.label ~= "" and (" " .. snap.label) or "") .. (snap.at and (", " .. ago(snap.at)) or "")) or "none" },
         { "Last heard", ps.lastIn and ago(ps.lastIn) or "nothing yet" },
         { "Character", name .. (prof and prof.name and prof.name ~= name and (" · chose \"" .. prof.name .. "\"") or "") .. (S.Nickname(name) and (" · your nickname \"" .. S.Nickname(name) .. "\"") or "") },
-        { "Version", "v" .. tostring((S.addonVers and S.addonVers[name]) or (S.FindPartner(name) and S.FindPartner(name).ver) or "?") .. " · protocol " .. tostring(S.sync.vers and S.sync.vers[name] or "?") .. (sn and sn.level and (" · level " .. sn.level) or "") },
+        { "Version", "v" .. tostring((S.addonVers and S.addonVers[name]) or (S.FindPartner(name) and S.FindPartner(name).ver) or "?") .. " · protocol " .. tostring(S.sync.vers and S.sync.vers[name] or "?") .. (snap and snap.level and (" · level " .. snap.level) or "") },
     }
 
     local y = -38
@@ -1663,6 +1698,7 @@ end
 -- optTabs(outer) makes the tab buttons; BuildOptions fills the pages.
 local OPT_TABS = { { "general", "General" }, { "sync", "Sync" }, { "status", "Quest status" }, { "record", "Recording" } }
 
+-- The Options window's pages
 local function BuildOptions(outer)
     local OPT_W = 448
 
@@ -1680,6 +1716,7 @@ local function BuildOptions(outer)
         local child = CreateFrame("Frame", nil, sf); child:SetSize(OPT_W, 10); sf:SetScrollChild(child)
         local bar = outer:CreateTexture(nil, "ARTWORK"); bar:SetWidth(3); bar:SetColorTexture(S.AR, S.AG, S.AB, .45)
 
+        -- Shows the scrollbar only when a page is taller than the window
         local function updBar()
             if not sf:IsShown() then bar:Hide() return end
 
@@ -1687,10 +1724,10 @@ local function BuildOptions(outer)
 
             if max <= 0 then bar:Hide() return end
 
-            local h = sf:GetHeight() or 1
-            local th = math.max(24, h * h / (h + max))
+            local height = sf:GetHeight() or 1
+            local th = math.max(24, height * height / (height + max))
 
-            bar:SetHeight(th); bar:ClearAllPoints(); bar:SetPoint("TOPRIGHT", outer, "TOPRIGHT", -1, -((h - th) * (sf:GetVerticalScroll() or 0) / max)); bar:Show()
+            bar:SetHeight(th); bar:ClearAllPoints(); bar:SetPoint("TOPRIGHT", outer, "TOPRIGHT", -1, -((height - th) * (sf:GetVerticalScroll() or 0) / max)); bar:Show()
         end
 
         sf:EnableMouseWheel(true)
@@ -1710,6 +1747,8 @@ local function BuildOptions(outer)
     local function done(key) outer.sections[key].child:SetHeight(-y + 10) end
 
     outer.Show = outer.Show   -- (keep)
+
+    -- Shows one Options tab
     outer.ShowTab = function(key)
         outer.tab = key
 
@@ -1719,12 +1758,13 @@ local function BuildOptions(outer)
 
         if rawget(outer, "tabButtons") then
             if rawget(outer, "Tabs") then S.BlizzSelectTab(outer, outer.tabIndex[key] or 1)
-            else for k, b in pairs(outer.tabButtons) do local on = (k == key); b.text:SetTextColor(on and 1 or .56, on and 1 or .6, on and 1 or .7); b.line:SetShown(on) end end
+            else for k, b in pairs(outer.tabButtons) do local selected = (k == key); b.text:SetTextColor(selected and 1 or .56, selected and 1 or .6, selected and 1 or .7); b.line:SetShown(selected) end end
         end
     end
 
     use("general")
 
+    -- A section heading
     local function Section(title)
         y = y - 8
 
@@ -1733,6 +1773,7 @@ local function BuildOptions(outer)
         y = y - 26
     end
 
+    -- A grey note under an option
     local function Note(text)
         local n = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); n:SetPoint("TOPLEFT", 26, y + 3); n:SetWidth(OPT_W - 40); n:SetJustifyH("LEFT"); n:SetTextColor(.6, .64, .74); n:SetText(text)
 
@@ -1741,12 +1782,13 @@ local function BuildOptions(outer)
         return n
     end
 
+    -- An option checkbox, with an optional note
     local function Row(label, key, default, onchange, note)
-        local cb = Check(page, label, key, default, y, onchange); y = y - 22
+        local checkbox = Check(page, label, key, default, y, onchange); y = y - 22
 
         if note then Note(note) end
 
-        return cb
+        return checkbox
     end
 
     -- a button that steps through choices; labelFn() gives its current text
@@ -1850,14 +1892,15 @@ local function BuildOptions(outer)
 
         for i, w in ipairs(S.WORKS_WITH) do
             local has = S.HasAddon(w.key)
-            local l = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); l:SetPoint("TOPLEFT", 4, y); l:SetWidth(OPT_W - 14); l:SetJustifyH("LEFT")
+            local label = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); label:SetPoint("TOPLEFT", 4, y); label:SetWidth(OPT_W - 14); label:SetJustifyH("LEFT")
 
-            wl[i] = l
+            wl[i] = label
             y = y - 16
 
             Note(has and ("Adds: " .. w.adds .. ".") or w.without)
         end
 
+        -- Ticks or crosses for the add-ons Sterling works with
         ui.worksWith = function()
             for i, w in ipairs(S.WORKS_WITH) do
                 local has = S.HasAddon(w.key)
@@ -1903,16 +1946,16 @@ local function BuildOptions(outer)
         local tiles, sw, refreshFlat = {}, {}
 
         -- live preview: a small window in the chosen colours
-        local pv = CreateFrame("Frame", nil, page, BD); pv:SetPoint("TOPLEFT", 4, y); pv:SetSize(OPT_W - 14, 74)
+        local preview = CreateFrame("Frame", nil, page, BD); preview:SetPoint("TOPLEFT", 4, y); preview:SetSize(OPT_W - 14, 74)
 
-        if pv.SetBackdrop then pv:SetBackdrop(S.BG_FLAT) end
+        if preview.SetBackdrop then preview:SetBackdrop(S.BG_FLAT) end
 
-        local pvBar = pv:CreateTexture(nil, "ARTWORK"); pvBar:SetPoint("TOPLEFT", 1, -1); pvBar:SetPoint("TOPRIGHT", -1, -1); pvBar:SetHeight(20)
-        local pvTitle = pv:CreateFontString(nil, "OVERLAY", "GameFontNormal"); pvTitle:SetPoint("LEFT", pvBar, "LEFT", 8, 0); pvTitle:SetText("Sterling Quest Sync"); pvTitle:SetTextColor(.96, .97, 1)
-        local pvTab = pv:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pvTab:SetPoint("TOPLEFT", 10, -26); pvTab:SetText("Catch-up")
-        local pvTabLine = pv:CreateTexture(nil, "ARTWORK"); pvTabLine:SetPoint("TOPLEFT", pvTab, "BOTTOMLEFT", -2, -2); pvTabLine:SetPoint("TOPRIGHT", pvTab, "BOTTOMRIGHT", 2, -2); pvTabLine:SetHeight(2)
-        local pvTab2 = pv:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pvTab2:SetPoint("LEFT", pvTab, "RIGHT", 22, 0); pvTab2:SetText("Path"); pvTab2:SetTextColor(.56, .6, .7)
-        local pvCard = CreateFrame("Frame", nil, pv, BD); pvCard:SetPoint("TOPLEFT", 8, -46); pvCard:SetPoint("BOTTOMRIGHT", -8, 6)
+        local pvBar = preview:CreateTexture(nil, "ARTWORK"); pvBar:SetPoint("TOPLEFT", 1, -1); pvBar:SetPoint("TOPRIGHT", -1, -1); pvBar:SetHeight(20)
+        local pvTitle = preview:CreateFontString(nil, "OVERLAY", "GameFontNormal"); pvTitle:SetPoint("LEFT", pvBar, "LEFT", 8, 0); pvTitle:SetText("Sterling Quest Sync"); pvTitle:SetTextColor(.96, .97, 1)
+        local pvTab = preview:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pvTab:SetPoint("TOPLEFT", 10, -26); pvTab:SetText("Catch-up")
+        local pvTabLine = preview:CreateTexture(nil, "ARTWORK"); pvTabLine:SetPoint("TOPLEFT", pvTab, "BOTTOMLEFT", -2, -2); pvTabLine:SetPoint("TOPRIGHT", pvTab, "BOTTOMRIGHT", 2, -2); pvTabLine:SetHeight(2)
+        local pvTab2 = preview:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); pvTab2:SetPoint("LEFT", pvTab, "RIGHT", 22, 0); pvTab2:SetText("Path"); pvTab2:SetTextColor(.56, .6, .7)
+        local pvCard = CreateFrame("Frame", nil, preview, BD); pvCard:SetPoint("TOPLEFT", 8, -46); pvCard:SetPoint("BOTTOMRIGHT", -8, 6)
 
         if pvCard.SetBackdrop then pvCard:SetBackdrop(S.BG_FLAT) end
 
@@ -1923,34 +1966,34 @@ local function BuildOptions(outer)
 
         -- preset tiles: each one drawn in its own colours, name in its accent
         local function Tile(p, i, col, row)
-            local t = CreateFrame("Button", nil, page, BD)
+            local button = CreateFrame("Button", nil, page, BD)
 
-            t:SetSize(140, 26); t:SetPoint("TOPLEFT", 4 + col * 147, y - row * 30)
+            button:SetSize(140, 26); button:SetPoint("TOPLEFT", 4 + col * 147, y - row * 30)
 
-            if t.SetBackdrop then t:SetBackdrop(S.BG_FLAT) end
+            if button.SetBackdrop then button:SetBackdrop(S.BG_FLAT) end
 
-            local pr, pg, pb = S.NavyWith(p[2], .16, .2, .33); t:SetBackdropColor(pr, pg, pb, 1)
+            local pr, page, pb = S.NavyWith(p[2], .16, .2, .33); button:SetBackdropColor(pr, page, pb, 1)
 
-            t.edge = { S.NavyWith(p[2], .26, .3, .4) }
+            button.edge = { S.NavyWith(p[2], .26, .3, .4) }
 
-            t:SetBackdropBorderColor(t.edge[1], t.edge[2], t.edge[3], 1)
+            button:SetBackdropBorderColor(button.edge[1], button.edge[2], button.edge[3], 1)
 
-            local bar = t:CreateTexture(nil, "ARTWORK"); bar:SetPoint("TOPLEFT", 1, -1); bar:SetPoint("BOTTOMLEFT", 1, 1); bar:SetWidth(4); bar:SetColorTexture(p[3][1], p[3][2], p[3][3], 1)
-            local tx = t:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); tx:SetPoint("LEFT", 10, 0); tx:SetPoint("RIGHT", -4, 0); tx:SetJustifyH("LEFT"); tx:SetWordWrap(false)
+            local bar = button:CreateTexture(nil, "ARTWORK"); bar:SetPoint("TOPLEFT", 1, -1); bar:SetPoint("BOTTOMLEFT", 1, 1); bar:SetWidth(4); bar:SetColorTexture(p[3][1], p[3][2], p[3][3], 1)
+            local tx = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); tx:SetPoint("LEFT", 10, 0); tx:SetPoint("RIGHT", -4, 0); tx:SetJustifyH("LEFT"); tx:SetWordWrap(false)
 
             tx:SetText(p[1]); tx:SetTextColor(p[3][1], p[3][2], p[3][3])
-            t:SetScript("OnClick", function()
+            button:SetScript("OnClick", function()
                 SterlingQuestDB.opts.navyColor = { p[2][1], p[2][2], p[2][3] }
                 SterlingQuestDB.opts.navyAccent = { p[3][1], p[3][2], p[3][3] }
 
                 refreshFlat()
             end)
 
-            t:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(p[1]); GameTooltip:AddLine(p[4] == "match" and "Panel and accent in one colour." or "Panel with a complementary accent.", 1, 1, 1, true); GameTooltip:AddLine("Click to use, then Apply.", .7, .74, .84, true); GameTooltip:Show() end)
-            t:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(p[1]); GameTooltip:AddLine(p[4] == "match" and "Panel and accent in one colour." or "Panel with a complementary accent.", 1, 1, 1, true); GameTooltip:AddLine("Click to use, then Apply.", .7, .74, .84, true); GameTooltip:Show() end)
+            button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-            t.preset = p
-            tiles[#tiles + 1] = t
+            button.preset = p
+            tiles[#tiles + 1] = button
         end
 
         for _, grp in ipairs({ { "match", "Matching" }, { "contrast", "Contrast" } }) do
@@ -1969,26 +2012,26 @@ local function BuildOptions(outer)
 
         -- your own: two swatches with the colour picker
         local function swatch(label, x, get, set)
-            local b = CreateFrame("Button", nil, page, BD)
+            local button = CreateFrame("Button", nil, page, BD)
 
-            b:SetPoint("TOPLEFT", x, y); b:SetSize(18, 18)
+            button:SetPoint("TOPLEFT", x, y); button:SetSize(18, 18)
 
-            if b.SetBackdrop then b:SetBackdrop(S.BG_FLAT); b:SetBackdropColor(0, 0, 0, 1); b:SetBackdropBorderColor(.8, .7, .5, 1) end
+            if button.SetBackdrop then button:SetBackdrop(S.BG_FLAT); button:SetBackdropColor(0, 0, 0, 1); button:SetBackdropBorderColor(.8, .7, .5, 1) end
 
-            b.fill = b:CreateTexture(nil, "ARTWORK"); b.fill:SetPoint("TOPLEFT", 2, -2); b.fill:SetPoint("BOTTOMRIGHT", -2, 2)
-            b.label = b:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); b.label:SetPoint("LEFT", b, "RIGHT", 6, 0); b.label:SetText(label); b.label:SetTextColor(.84, .86, .92)
-            b.get = get
+            button.fill = button:CreateTexture(nil, "ARTWORK"); button.fill:SetPoint("TOPLEFT", 2, -2); button.fill:SetPoint("BOTTOMRIGHT", -2, 2)
+            button.label = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); button.label:SetPoint("LEFT", button, "RIGHT", 6, 0); button.label:SetText(label); button.label:SetTextColor(.84, .86, .92)
+            button.get = get
 
-            b:SetScript("OnClick", function()
+            button:SetScript("OnClick", function()
                 local c = get()
 
                 S.PickColor(c[1], c[2], c[3], 1, false, function(nr, ng, nb) set(nr, ng, nb); refreshFlat() end)
             end)
 
-            b:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(label); GameTooltip:AddLine("Pick any colour. The preview follows; Apply puts it on the windows.", 1, 1, 1, true); GameTooltip:Show() end)
-            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(label); GameTooltip:AddLine("Pick any colour. The preview follows; Apply puts it on the windows.", 1, 1, 1, true); GameTooltip:Show() end)
+            button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-            sw[#sw + 1] = b
+            sw[#sw + 1] = button
         end
 
         swatch("Panel colour", 4, getPanel, function(r, g, b) SterlingQuestDB.opts.navyColor = { r, g, b } end)
@@ -2006,14 +2049,15 @@ local function BuildOptions(outer)
 
         Note("Apply here switches to the Flat look with these colours. Warnings stay red whatever you pick.")
 
+        -- Redraws the Flat look preview with the chosen colours
         refreshFlat = function()
             local pc, ac = getPanel(), getAccent()
 
             local function nv(r, g, b) return S.NavyWith(pc, r, g, b) end
 
-            local r, g, b = nv(.1, .12, .17); pv:SetBackdropColor(r, g, b, .96)
+            local r, g, b = nv(.1, .12, .17); preview:SetBackdropColor(r, g, b, .96)
 
-            r, g, b = nv(.26, .3, .4); pv:SetBackdropBorderColor(r, g, b, 1)
+            r, g, b = nv(.26, .3, .4); preview:SetBackdropBorderColor(r, g, b, 1)
 
             pvBar:SetColorTexture(nv(.16, .2, .33))
             pvTab:SetTextColor(ac[1], ac[2], ac[3]); pvTabLine:SetColorTexture(ac[1], ac[2], ac[3], 1)
@@ -2023,10 +2067,10 @@ local function BuildOptions(outer)
 
             pvHead:SetTextColor(ac[1], ac[2], ac[3])
 
-            for _, t in ipairs(tiles) do
-                local on = same(t.preset[2], pc) and same(t.preset[3], ac)
+            for _, tile in ipairs(tiles) do
+                local on = same(tile.preset[2], pc) and same(tile.preset[3], ac)
 
-                if on then t:SetBackdropBorderColor(1, 1, 1, 1) else t:SetBackdropBorderColor(t.edge[1], t.edge[2], t.edge[3], 1) end
+                if on then tile:SetBackdropBorderColor(1, 1, 1, 1) else tile:SetBackdropBorderColor(tile.edge[1], tile.edge[2], tile.edge[3], 1) end
             end
 
             for _, b in ipairs(sw) do local c = b.get(); b.fill:SetColorTexture(c[1], c[2], c[3], 1) end
@@ -2041,6 +2085,7 @@ local function BuildOptions(outer)
 
     flatBox:SetHeight(flatH)
 
+    -- The Flat look colours only show while Look is Flat
     local function flatShown()
         local on = S.Opt("skin", "wow") == "navy"
 
@@ -2069,13 +2114,13 @@ local function BuildOptions(outer)
 
     do
         local bl = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); bl:SetPoint("TOPLEFT", 4, y - 5); bl:SetTextColor(.84, .86, .92)
-        local cb = Button(page, "Clear", 60); cb:SetPoint("TOPLEFT", 196, y)
+        local button = Button(page, "Clear", 60); button:SetPoint("TOPLEFT", 196, y)
 
         local function upd() local n = S.BlockedCount and S.BlockedCount() or 0; bl:SetText("Hidden players: " .. n) end
 
-        cb:SetScript("OnClick", function() S.ClearBlocked(); upd() end)
-        cb:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText("Hidden players"); GameTooltip:AddLine("People you hid with x in the Add window. They can't invite or sync with you. Clear lets them back.", 1, 1, 1, true); GameTooltip:Show() end)
-        cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        button:SetScript("OnClick", function() S.ClearBlocked(); upd() end)
+        button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText("Hidden players"); GameTooltip:AddLine("People you hid with x in the Add window. They can't invite or sync with you. Clear lets them back.", 1, 1, 1, true); GameTooltip:Show() end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
         upd()
         page:HookScript("OnShow", upd)
 
@@ -2083,7 +2128,7 @@ local function BuildOptions(outer)
     end
 
     Row("Catch-up tab", "catchupTab", true, function() if S.UI_TabShown then S.UI_TabShown("catchup", S.Opt("catchupTab", true)) end if not S.Opt("catchupTab", true) and current == "catchup" then S.UI_Tab("sync") end end, "Quests a partner finished in a zone that you haven't, as a plan and a path. Needs Questie.")
-    Row("Catch-up: include quests they only picked up", "catchupLog", false, function() if SterlingQuestDB.catchup then local c = SterlingQuestDB.catchup; S.CatchupStart(c.who, c.zone, true) end S.UI_Update() end, "Off: Catch-up only lists quests your partner turned in. On: quests still sitting in their log are added too.")
+    Row("Catch-up: include quests they only picked up", "catchupLog", false, function() if SterlingQuestDB.catchup then local catchup = SterlingQuestDB.catchup; S.CatchupStart(catchup.who, catchup.zone, true) end S.UI_Update() end, "Off: Catch-up only lists quests your partner turned in. On: quests still sitting in their log are added too.")
 
     local r3 = Button(page, "Send my log now", 110); r3:SetPoint("TOPLEFT", 4, y); r3:SetScript("OnClick", function() S.SyncWith(nil, "send") end)
 
@@ -2115,6 +2160,7 @@ local function BuildOptions(outer)
 
     local preview
 
+    -- Updates the quest log and the preview after a change
     local function refresh()
         if S.UpdateQuestLogStatus then pcall(S.UpdateQuestLogStatus) end
         if preview and S.StatusPreview then preview:SetText("Tooltip preview:\n" .. S.StatusPreview()) end
@@ -2157,31 +2203,31 @@ local function BuildOptions(outer)
     end)
 
     -- the preview: a strip of quest page with a title and the block under it
-    local pv = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    local preview = CreateFrame("Frame", nil, page, BackdropTemplateMixin and "BackdropTemplate" or nil)
 
-    pv:SetPoint("TOPLEFT", 4, y - 2); pv:SetSize(OPT_W - 14, 150)
+    preview:SetPoint("TOPLEFT", 4, y - 2); preview:SetSize(OPT_W - 14, 150)
 
-    local paper = pv:CreateTexture(nil, "BACKGROUND"); paper:SetAllPoints()
+    local paper = preview:CreateTexture(nil, "BACKGROUND"); paper:SetAllPoints()
 
     if not (paper.SetAtlas and pcall(paper.SetAtlas, paper, "QuestBG-Parchment") and paper:GetAtlas()) then
         paper:SetTexture("Interface\\QuestFrame\\QuestBG"); paper:SetTexCoord(0, .6, 0, .3)
     end
 
-    local tint = pv:CreateTexture(nil, "BORDER"); tint:SetAllPoints(); tint:SetColorTexture(.87, .78, .58, 0)
+    local tint = preview:CreateTexture(nil, "BORDER"); tint:SetAllPoints(); tint:SetColorTexture(.87, .78, .58, 0)
 
     if not paper:GetTexture() and not (paper.GetAtlas and paper:GetAtlas()) then tint:SetColorTexture(.87, .78, .58, 1) end
 
-    local edge = CreateFrame("Frame", nil, pv, BackdropTemplateMixin and "BackdropTemplate" or nil); edge:SetAllPoints()
+    local edge = CreateFrame("Frame", nil, preview, BackdropTemplateMixin and "BackdropTemplate" or nil); edge:SetAllPoints()
 
     if edge.SetBackdrop then edge:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 }); edge:SetBackdropBorderColor(.5, .4, .25, .9) end
 
-    local ptitle = pv:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    local ptitle = preview:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 
     pcall(ptitle.SetFontObject, ptitle, "QuestTitleFont"); ptitle:SetTextColor(.18, .11, .03); pcall(ptitle.SetShadowOffset, ptitle, 0, 0)
     ptitle:SetPoint("TOPLEFT", 12, -10); ptitle:SetText("Hate the Hatefury")
 
-    local sample = S.StatusSample(pv); sample:SetPoint("TOPLEFT", ptitle, "BOTTOMLEFT", 0, -4)
-    local pdesc = pv:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local sample = S.StatusSample(preview); sample:SetPoint("TOPLEFT", ptitle, "BOTTOMLEFT", 0, -4)
+    local pdesc = preview:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 
     pcall(pdesc.SetFontObject, pdesc, "QuestFont"); pdesc:SetTextColor(.18, .11, .03); pcall(pdesc.SetShadowOffset, pdesc, 0, 0)
     pdesc:SetPoint("TOPLEFT", sample, "BOTTOMLEFT", 0, -6); pdesc:SetWidth(OPT_W - 44); pdesc:SetJustifyH("LEFT")
@@ -2192,6 +2238,8 @@ local function BuildOptions(outer)
     -- colour helpers: text colours are kept as hex, the rest as r,g,b,a
     local function hex2rgb(h) h = h or "ffffff"; return (tonumber(h:sub(1, 2), 16) or 255) / 255, (tonumber(h:sub(3, 4), 16) or 255) / 255, (tonumber(h:sub(5, 6), 16) or 255) / 255 end
     local function rgb2hex(r, g, b) return ("%02x%02x%02x"):format(math.floor(r * 255 + .5), math.floor(g * 255 + .5), math.floor(b * 255 + .5)) end
+
+    -- One colour of the quest log status look
     local function getColor(key)
         local look = S.TipLook()
 
@@ -2204,6 +2252,7 @@ local function BuildOptions(outer)
         local r, g, b = hex2rgb(look.text and look.text[key]); return r, g, b, 1
     end
 
+    -- Sets one colour (the first change copies the preset into your custom look)
     local function setColor(key, r, g, b, a)
         local c = S.TipCustom()
 
@@ -2211,12 +2260,14 @@ local function BuildOptions(outer)
         else c.text[key] = rgb2hex(r, g, b) end
     end
 
+    -- Opens the colour picker for one colour
     local function pick(key, hasAlpha)
         local r, g, b, a = getColor(key)
         local CPF = _G.ColorPickerFrame
 
         if type(CPF) ~= "table" then return end
 
+        -- Called by the colour picker as you drag
         local function now()
             local nr, ng, nb = CPF:GetColorRGB()
             local na = a
@@ -2242,23 +2293,24 @@ local function BuildOptions(outer)
         end
     end
 
+    -- A colour swatch button
     local function Swatch(label, key, hasAlpha, col)
         local x = 4 + (col - 1) * 150
-        local b = CreateFrame("Button", nil, page, BackdropTemplateMixin and "BackdropTemplate" or nil)
+        local button = CreateFrame("Button", nil, page, BackdropTemplateMixin and "BackdropTemplate" or nil)
 
-        b:SetPoint("TOPLEFT", x, y); b:SetSize(18, 18)
+        button:SetPoint("TOPLEFT", x, y); button:SetSize(18, 18)
 
-        if b.SetBackdrop then b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 }); b:SetBackdropColor(0, 0, 0, 1); b:SetBackdropBorderColor(.8, .7, .5, 1) end
+        if button.SetBackdrop then button:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 }); button:SetBackdropColor(0, 0, 0, 1); button:SetBackdropBorderColor(.8, .7, .5, 1) end
 
-        b.fill = b:CreateTexture(nil, "ARTWORK"); b.fill:SetPoint("TOPLEFT", 2, -2); b.fill:SetPoint("BOTTOMRIGHT", -2, 2)
-        b.label = b:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); b.label:SetPoint("LEFT", b, "RIGHT", 6, 0); b.label:SetText(label); b.label:SetTextColor(.84, .86, .92)
+        button.fill = button:CreateTexture(nil, "ARTWORK"); button.fill:SetPoint("TOPLEFT", 2, -2); button.fill:SetPoint("BOTTOMRIGHT", -2, 2)
+        button.label = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); button.label:SetPoint("LEFT", button, "RIGHT", 6, 0); button.label:SetText(label); button.label:SetTextColor(.84, .86, .92)
 
-        b:SetScript("OnClick", function() pick(key, hasAlpha) end)
-        b:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(label); GameTooltip:AddLine("Click to pick a colour.", 1, 1, 1, true); GameTooltip:Show() end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        button:SetScript("OnClick", function() pick(key, hasAlpha) end)
+        button:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(label); GameTooltip:AddLine("Click to pick a colour.", 1, 1, 1, true); GameTooltip:Show() end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        b.key = key
-        swatches[#swatches + 1] = b
+        button.key = key
+        swatches[#swatches + 1] = button
     end
 
     Swatch("Background", "bg", true, 1); Swatch("Edge", "edge", true, 2); y = y - 24
@@ -2266,14 +2318,15 @@ local function BuildOptions(outer)
     Swatch("Ready to turn in", "ready", false, 1); Swatch("In log", "log", false, 2); y = y - 24
     Swatch("Not started", "none", false, 1); y = y - 28
 
+    -- A checkbox for one part of the status look (box, side line, dark text)
     local function LookCheck(label, field, col, tip)
-        local cb = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
+        local checkbox = CreateFrame("CheckButton", nil, page, "UICheckButtonTemplate")
 
-        cb:SetPoint("TOPLEFT", (col - 1) * 150, y); cb:SetSize(24, 24)
+        checkbox:SetPoint("TOPLEFT", (col - 1) * 150, y); checkbox:SetSize(24, 24)
 
-        cb.text = cb:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); cb.text:SetPoint("LEFT", cb, "RIGHT", 2, 0); cb.text:SetText(label); cb.text:SetTextColor(.84, .86, .92)
+        checkbox.text = checkbox:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); checkbox.text:SetPoint("LEFT", checkbox, "RIGHT", 2, 0); checkbox.text:SetText(label); checkbox.text:SetTextColor(.84, .86, .92)
 
-        cb:SetScript("OnClick", function(self)
+        checkbox:SetScript("OnClick", function(self)
             local c = S.TipCustom()
 
             if field == "box" then c.box = self:GetChecked() and true or false else c[field] = self:GetChecked() and true or false end
@@ -2282,12 +2335,12 @@ local function BuildOptions(outer)
         end)
 
         if tip then
-            cb:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(label); GameTooltip:AddLine(tip, 1, 1, 1, true); GameTooltip:Show() end)
-            cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            checkbox:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(label); GameTooltip:AddLine(tip, 1, 1, 1, true); GameTooltip:Show() end)
+            checkbox:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
 
-        cb.field = field
-        checks[#checks + 1] = cb
+        checkbox.field = field
+        checks[#checks + 1] = checkbox
     end
 
     LookCheck("Box behind the text", "box", 1, "Off: clear, the text sits right on the page.")
@@ -2318,18 +2371,19 @@ local function BuildOptions(outer)
     -- keep the swatches, checks and preview in step with the current look
     local baseRefresh = refresh
 
+    -- Updates the swatches and checks to the current look
     refresh = function()
         baseRefresh()
 
         local look = S.TipLook()
 
-        for _, b in ipairs(swatches) do local r, g, bb, a = getColor(b.key); b.fill:SetColorTexture(r, g, bb, a) end
-        for _, cb in ipairs(checks) do
-            local v = look[cb.field]
+        for _, swatch in ipairs(swatches) do local r, g, bb, a = getColor(swatch.key); swatch.fill:SetColorTexture(r, g, bb, a) end
+        for _, check in ipairs(checks) do
+            local v = look[check.field]
 
-            if cb.field == "box" then v = look.box ~= false and look.bg ~= nil end
+            if check.field == "box" then v = look.box ~= false and look.bg ~= nil end
 
-            cb:SetChecked(v and true or false)
+            check:SetChecked(v and true or false)
         end
 
         if presetDD and presetDD.Refresh then presetDD:Refresh() end
@@ -2382,6 +2436,7 @@ local function BuildOptions(outer)
 
     local packNote
 
+    -- How much packing old sessions has saved, shown under the option
     local function packText()
         if not packNote then return end
 
@@ -2409,10 +2464,11 @@ local function BuildOptions(outer)
     outer.ShowTab(outer.tab or "general")
 end
 
+-- Applies the window size and opacity settings to every window
 function S.UI_ApplyOptions()
     local sc, al = S.Opt("scale", 1), S.Opt("alpha", 1)
 
-    for _, w in ipairs(S.windows or {}) do w:SetAlpha(al); w:SetScale(sc) end
+    for _, window in ipairs(S.windows or {}) do window:SetAlpha(al); window:SetScale(sc) end
 end
 
 ---------------------------------------------------------------------------
@@ -2425,8 +2481,8 @@ local function BuildCatchup(page)
     page.who = Dropdown(page, 112, function() return S.catchupWho and S.PartnerLabel(S.catchupWho) or "pick someone" end, function()
         local items = {}
 
-        for _, p in ipairs(S.Partners()) do
-            if S.snaps[p.name] then items[#items + 1] = { text = S.PartnerLabel(p.name), checked = S.catchupWho == p.name, func = function() S.catchupWho = p.name; page.zone = nil; page.follow = true; page.manual = nil; S.UI_Update() end } end
+        for _, partner in ipairs(S.Partners()) do
+            if S.snaps[partner.name] then items[#items + 1] = { text = S.PartnerLabel(partner.name), checked = S.catchupWho == partner.name, func = function() S.catchupWho = partner.name; page.zone = nil; page.follow = true; page.manual = nil; S.UI_Update() end } end
         end
 
         if #items == 0 then items[1] = { text = "Nobody synced yet", disabled = true } end
@@ -2463,16 +2519,16 @@ local function BuildCatchup(page)
     page.zoneRows = {}; page.zoneOffset = 0
 
     for i = 1, ZN do
-        local r = CreateFrame("Button", nil, page.zoneBox); r:SetHeight(ZH); r:SetPoint("TOPLEFT", 2, -2 - (i - 1) * ZH); r:SetPoint("RIGHT", -2, 0)
+        local button = CreateFrame("Button", nil, page.zoneBox); button:SetHeight(ZH); button:SetPoint("TOPLEFT", 2, -2 - (i - 1) * ZH); button:SetPoint("RIGHT", -2, 0)
 
-        r.hl = r:CreateTexture(nil, "HIGHLIGHT"); r.hl:SetAllPoints(); r.hl:SetColorTexture(S.AR, S.AG, S.AB, .15)
-        r.sel = r:CreateTexture(nil, "BACKGROUND"); r.sel:SetAllPoints(); r.sel:SetColorTexture(S.AR, S.AG, S.AB, .18); r.sel:Hide()
-        r.text = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.text:SetPoint("LEFT", 6, 0); r.text:SetJustifyH("LEFT")
-        r.n = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.n:SetPoint("RIGHT", -6, 0); r.n:SetTextColor(.56, .6, .7)
+        button.hl = button:CreateTexture(nil, "HIGHLIGHT"); button.hl:SetAllPoints(); button.hl:SetColorTexture(S.AR, S.AG, S.AB, .15)
+        button.sel = button:CreateTexture(nil, "BACKGROUND"); button.sel:SetAllPoints(); button.sel:SetColorTexture(S.AR, S.AG, S.AB, .18); button.sel:Hide()
+        button.text = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); button.text:SetPoint("LEFT", 6, 0); button.text:SetJustifyH("LEFT")
+        button.n = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); button.n:SetPoint("RIGHT", -6, 0); button.n:SetTextColor(.56, .6, .7)
 
-        r:SetScript("OnClick", function() if r.key then page.zone = r.key; page.manual = true; page.offset = 0; S.UI_Update() end end)
+        button:SetScript("OnClick", function() if button.key then page.zone = button.key; page.manual = true; page.offset = 0; S.UI_Update() end end)
 
-        page.zoneRows[i] = r
+        page.zoneRows[i] = button
     end
 
     page.zoneEmpty = page.zoneBox:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.zoneEmpty:SetPoint("CENTER"); page.zoneEmpty:SetWidth(310); page.zoneEmpty:SetTextColor(.5, .55, .65)
@@ -2503,58 +2559,60 @@ local function BuildCatchup(page)
     page.psb:SetPoint("TOPRIGHT", 0, 0); page.psb:SetPoint("BOTTOMRIGHT", 0, 0)
 
     page.planRows = {}; page.offset = 0; page.PH = PH
+
+    -- A Catch-up row, made when first needed
     page.PlanRow = function(i)
-        local r = page.planRows[i]
+        local row = page.planRows[i]
 
-        if r then return r end
+        if row then return row end
 
-        r = CreateFrame("Button", nil, page.plan); r:SetHeight(PH); r:SetPoint("TOPLEFT", 0, -(i - 1) * PH); r:SetPoint("RIGHT", -10, 0)
-        r.hl = r:CreateTexture(nil, "HIGHLIGHT"); r.hl:SetAllPoints(); r.hl:SetColorTexture(S.AR, S.AG, S.AB, .1)
+        row = CreateFrame("Button", nil, page.plan); row:SetHeight(PH); row:SetPoint("TOPLEFT", 0, -(i - 1) * PH); row:SetPoint("RIGHT", -10, 0)
+        row.hl = row:CreateTexture(nil, "HIGHLIGHT"); row.hl:SetAllPoints(); row.hl:SetColorTexture(S.AR, S.AG, S.AB, .1)
 
         -- three columns: quest (takes what it needs, capped), starts at (the rest), level (fixed)
-        r.text = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.text:SetPoint("LEFT", 4, 0); r.text:SetJustifyH("LEFT"); r.text:SetWordWrap(false)
-        r.lvl = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.lvl:SetPoint("RIGHT", -4, 0); r.lvl:SetWidth(34); r.lvl:SetJustifyH("RIGHT"); r.lvl:SetWordWrap(false)
-        r.meta = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.meta:SetPoint("LEFT", r.text, "RIGHT", 8, 0); r.meta:SetPoint("RIGHT", r.lvl, "LEFT", -8, 0); r.meta:SetJustifyH("RIGHT"); r.meta:SetWordWrap(false); r.meta:SetTextColor(.7, .74, .84)
+        row.text = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.text:SetPoint("LEFT", 4, 0); row.text:SetJustifyH("LEFT"); row.text:SetWordWrap(false)
+        row.lvl = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.lvl:SetPoint("RIGHT", -4, 0); row.lvl:SetWidth(34); row.lvl:SetJustifyH("RIGHT"); row.lvl:SetWordWrap(false)
+        row.meta = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.meta:SetPoint("LEFT", row.text, "RIGHT", 8, 0); row.meta:SetPoint("RIGHT", row.lvl, "LEFT", -8, 0); row.meta:SetJustifyH("RIGHT"); row.meta:SetWordWrap(false); row.meta:SetTextColor(.7, .74, .84)
 
-        r:SetScript("OnEnter", function(self)
-            if not r.it then return end
+        row:SetScript("OnEnter", function(self)
+            if not row.it then return end
 
-            local it = r.it
+            local item = row.it
 
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 
-            if r.chainRow then
-                GameTooltip:AddLine("After " .. it.name, 1, 1, 1)
+            if row.chainRow then
+                GameTooltip:AddLine("After " .. item.name, 1, 1, 1)
 
-                for k, c in ipairs(it.chain or {}) do GameTooltip:AddDoubleLine(k .. ". " .. c.name, (c.giver and c.giver.name or "") .. (c.level and c.level > 0 and ("  lvl " .. c.level) or ""), .95, .77, .42, .7, .74, .84) end
+                for k, chainQuest in ipairs(item.chain or {}) do GameTooltip:AddDoubleLine(k .. ". " .. chainQuest.name, (chainQuest.giver and chainQuest.giver.name or "") .. (chainQuest.level and chainQuest.level > 0 and ("  lvl " .. chainQuest.level) or ""), .95, .77, .42, .7, .74, .84) end
 
                 GameTooltip:AddLine("Each one opens up when the one before it is turned in.", .56, .6, .7, true)
                 GameTooltip:Show(); return
             end
 
-            GameTooltip:AddLine(it.name, 1, 1, 1)
-            GameTooltip:AddLine("Quest " .. it.qid .. (it.qlevel and it.qlevel > 0 and ("  ·  level " .. it.qlevel) or "") .. (it.level and it.level > 0 and ("  ·  needs " .. it.level) or ""), .56, .6, .7)
+            GameTooltip:AddLine(item.name, 1, 1, 1)
+            GameTooltip:AddLine("Quest " .. item.qid .. (item.qlevel and item.qlevel > 0 and ("  ·  level " .. item.qlevel) or "") .. (item.level and item.level > 0 and ("  ·  needs " .. item.level) or ""), .56, .6, .7)
 
-            if it.giver then GameTooltip:AddDoubleLine("Starts at", it.giver.name .. (it.giver.x and (("  (%.0f, %.0f)"):format(it.giver.x, it.giver.y)) or ""), .56, .6, .7, .9, .92, 1) end
-            if it.turnin then GameTooltip:AddDoubleLine("Ends at", it.turnin.name .. (it.turnin.x and (("  (%.0f, %.0f)"):format(it.turnin.x, it.turnin.y)) or ""), .56, .6, .7, .9, .92, 1) end
-            if it.why then GameTooltip:AddLine(it.why, .95, .77, .42, true) end
-            if it.state == "locked" and it.afterId then
+            if item.giver then GameTooltip:AddDoubleLine("Starts at", item.giver.name .. (item.giver.x and (("  (%.0f, %.0f)"):format(item.giver.x, item.giver.y)) or ""), .56, .6, .7, .9, .92, 1) end
+            if item.turnin then GameTooltip:AddDoubleLine("Ends at", item.turnin.name .. (item.turnin.x and (("  (%.0f, %.0f)"):format(item.turnin.x, item.turnin.y)) or ""), .56, .6, .7, .9, .92, 1) end
+            if item.why then GameTooltip:AddLine(item.why, .95, .77, .42, true) end
+            if item.state == "locked" and item.afterId then
                 local pre = S.CatchupPlan and nil
                 local giverName
 
-                if S.PrereqSpot then local sp = S.PrereqSpot(it.afterId); if sp then giverName = sp.name .. (sp.x and ((" (%.0f, %.0f)"):format(sp.x, sp.y)) or "") end end
-                if giverName then GameTooltip:AddDoubleLine("Prerequisite starts at", giverName .. (it.afterZone and (", " .. it.afterZone) or ""), .56, .6, .7, .9, .92, 1) end
+                if S.PrereqSpot then local sp = S.PrereqSpot(item.afterId); if sp then giverName = sp.name .. (sp.x and ((" (%.0f, %.0f)"):format(sp.x, sp.y)) or "") end end
+                if giverName then GameTooltip:AddDoubleLine("Prerequisite starts at", giverName .. (item.afterZone and (", " .. item.afterZone) or ""), .56, .6, .7, .9, .92, 1) end
             end
 
-            GameTooltip:AddLine(S.PartnerLabel(S.catchupWho or "") .. ": " .. (it.theirs == "done" and "turned in" or "in their log"), .7, .74, .84)
+            GameTooltip:AddLine(S.PartnerLabel(S.catchupWho or "") .. ": " .. (item.theirs == "done" and "turned in" or "in their log"), .7, .74, .84)
             GameTooltip:Show()
         end)
 
-        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        page.planRows[i] = r
+        page.planRows[i] = row
 
-        return r
+        return row
     end
 
     page.planEmpty = page.plan:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); page.planEmpty:SetPoint("TOP", 0, -30); page.planEmpty:SetWidth(300); page.planEmpty:SetJustifyH("CENTER"); page.planEmpty:SetTextColor(.5, .55, .65)
@@ -2566,13 +2624,13 @@ local function BuildCatchup(page)
 
     page.map = Button(page, "Show on map", 92); page.map:SetPoint("LEFT", page.start, "RIGHT", 4, 0)
 
-    page.map:SetScript("OnClick", function() local z = page.zoneInfo; if z then S.ShowZoneOnMap(z.map) end end)
+    page.map:SetScript("OnClick", function() local zone = page.zoneInfo; if zone then S.ShowZoneOnMap(zone.map) end end)
 
     page.stop = Button(page, "Stop", 48); page.stop:SetPoint("LEFT", page.map, "RIGHT", 4, 0)
 
     -- path order: the order your partner did them, or the shortest walk
     page.order = Dropdown(page, 92, function() return S.CatchupOrder() == "theirs" and "Their order" or "Shortest" end, function()
-        local function pick(v) SterlingQuestDB.opts.catchupOrder = v; page.order:Refresh(); if S.catchupLabel and SterlingQuestDB.catchup then local c = SterlingQuestDB.catchup; S.CatchupStart(c.who, c.zone) end; S.UI_Update() end
+        local function pick(v) SterlingQuestDB.opts.catchupOrder = v; page.order:Refresh(); if S.catchupLabel and SterlingQuestDB.catchup then local catchup = SterlingQuestDB.catchup; S.CatchupStart(catchup.who, catchup.zone) end; S.UI_Update() end
 
         return { { text = "Path order", isTitle = true },
                  { text = "Their order (how " .. (S.catchupWho and S.PartnerLabel(S.catchupWho) or "they") .. " did it)", checked = S.CatchupOrder() == "theirs", func = function() pick("theirs") end },
@@ -2587,6 +2645,7 @@ end
 
 local GROUP_COLOR = { ready = "|cff7ee2a2", inlog = "|cff8ab8ff", locked = "|cfff3c56b", level = "|cffff9b92", other = "|cff8a93a8" }
 
+-- Fills the Catch-up tab
 local function UpdateCatchup(page)
     main:SetHeight(STD_H); main.right:SetText("")
 
@@ -2594,7 +2653,7 @@ local function UpdateCatchup(page)
     if not S.catchupWho or not S.snaps[S.catchupWho] then
         S.catchupWho = nil
 
-        for _, p in ipairs(S.Partners()) do if S.snaps[p.name] and not S.catchupWho then S.catchupWho = p.name end end
+        for _, partner in ipairs(S.Partners()) do if S.snaps[partner.name] and not S.catchupWho then S.catchupWho = partner.name end end
     end
 
     local who = S.catchupWho
@@ -2629,7 +2688,7 @@ local function UpdateCatchup(page)
     local q = (page.search:GetText() or ""):lower():gsub("^%s+", "")
     local shown = {}
 
-    for _, z in ipairs(zones) do if q == "" or z.name:lower():find(q, 1, true) then shown[#shown + 1] = z end end
+    for _, zone in ipairs(zones) do if q == "" or zone.name:lower():find(q, 1, true) then shown[#shown + 1] = zone end end
 
     page.firstZone = shown[1] and shown[1].key or nil
 
@@ -2645,7 +2704,7 @@ local function UpdateCatchup(page)
 
     local selIdx
 
-    for k, z in ipairs(shown) do if z.key == page.zone then selIdx = k end end
+    for k, zone in ipairs(shown) do if zone.key == page.zone then selIdx = k end end
 
     if not selIdx and q ~= "" and shown[1] then page.zone = shown[1].key; page.offset = 0; selIdx = 1 end
     if page.scrollToSel and selIdx then page.zoneOffset = selIdx - 1 end
@@ -2659,15 +2718,15 @@ local function UpdateCatchup(page)
     local have = false
 
     for i = 1, #page.zoneRows do
-        local z = shown[page.zoneOffset + i]
+        local zone = shown[page.zoneOffset + i]
         local r = page.zoneRows[i]
 
-        if z then
-            r.key = z.key; r.text:SetText(z.name); r.n:SetText(z.count .. " to catch up")
+        if zone then
+            r.key = zone.key; r.text:SetText(zone.name); r.n:SetText(zone.count .. " to catch up")
 
-            r.sel:SetShown(page.zone == z.key)
+            r.sel:SetShown(page.zone == zone.key)
 
-            if page.zone == z.key then have = true end
+            if page.zone == zone.key then have = true end
 
             r:Show()
         end
@@ -2696,13 +2755,13 @@ local function UpdateCatchup(page)
     local flat = {}
     local n = 0
 
-    for _, g in ipairs(plan.groups) do
-        flat[#flat + 1] = { header = g }
+    for _, group in ipairs(plan.groups) do
+        flat[#flat + 1] = { header = group }
 
-        for _, it in ipairs(g.items) do
-            n = n + 1; flat[#flat + 1] = { it = it, n = n }
+        for _, item in ipairs(group.items) do
+            n = n + 1; flat[#flat + 1] = { it = item, n = n }
 
-            if it.chain then flat[#flat + 1] = { chain = it } end     -- one compact line: what this quest leads to
+            if item.chain then flat[#flat + 1] = { chain = item } end     -- one compact line: what this quest leads to
         end
     end
 
@@ -2723,7 +2782,7 @@ local function UpdateCatchup(page)
         if row.chain then
             local names = {}
 
-            for _, c in ipairs(row.chain.chain) do names[#names + 1] = c.name end
+            for _, chainQuest in ipairs(row.chain.chain) do names[#names + 1] = chainQuest.name end
 
             r.text:SetText("        |cff8a93a8then|r " .. GROUP_COLOR.locked .. table.concat(names, " > ") .. "|r")
             r.text:SetWidth(0); r.text:SetWidth(math.min(r.text:GetStringWidth() or 200, 300))
@@ -2734,19 +2793,19 @@ local function UpdateCatchup(page)
             r.text:SetText(GROUP_COLOR[g.key] .. g.title .. " (" .. #g.items .. ")|r"); r.text:SetWidth(0); r.text:SetWidth(math.min(r.text:GetStringWidth() or 200, 300)); r.meta:SetText(""); r.lvl:SetText("")
             r.hl:SetAlpha(0)
         else
-            local it = row.it
-            local c = GROUP_COLOR[it.state] or S.TEXT_HEX
+            local item = row.it
+            local color = GROUP_COLOR[item.state] or S.TEXT_HEX
 
-            r.text:SetText("   " .. row.n .. ".  " .. c .. it.name .. "|r")
+            r.text:SetText("   " .. row.n .. ".  " .. color .. item.name .. "|r")
             r.text:SetWidth(0); r.text:SetWidth(math.min(r.text:GetStringWidth() or 200, 215))
 
-            local meta, lvl = "", (it.level and it.level > 0) and tostring(it.level) or ""
+            local meta, lvl = "", (item.level and item.level > 0) and tostring(item.level) or ""
 
-            if it.state == "ready" then meta = it.giver and it.giver.name or ""
-            elseif it.state == "inlog" then meta = "|cff8ab8ff" .. (it.why or "in your log") .. "|r"
-            elseif it.state == "locked" then meta = it.why or ("Prerequisite: " .. (it.after or "?"))
-            elseif it.state == "level" then meta = (it.giver and it.giver.name or ""); lvl = "|cffff9b92" .. it.level .. (S.ColorBlind() and "!" or "") .. "|r"
-            else meta = "|cff8a93a8" .. (it.why or "") .. "|r" end
+            if item.state == "ready" then meta = item.giver and item.giver.name or ""
+            elseif item.state == "inlog" then meta = "|cff8ab8ff" .. (item.why or "in your log") .. "|r"
+            elseif item.state == "locked" then meta = item.why or ("Prerequisite: " .. (item.after or "?"))
+            elseif item.state == "level" then meta = (item.giver and item.giver.name or ""); lvl = "|cffff9b92" .. item.level .. (S.ColorBlind() and "!" or "") .. "|r"
+            else meta = "|cff8a93a8" .. (item.why or "") .. "|r" end
             r.meta:SetText(meta); r.lvl:SetText(lvl)
             r.hl:SetAlpha(1)
         end
@@ -2769,16 +2828,18 @@ end
 ---------------------------------------------------------------------------
 local share
 
+-- Partners who are in your group right now
 local function groupPartners()
     local out = {}
 
-    for _, p in ipairs(S.Partners()) do
-        if p.on and ((UnitInParty and UnitInParty(p.name)) or (UnitInRaid and UnitInRaid(p.name))) then out[#out + 1] = p.name end
+    for _, partner in ipairs(S.Partners()) do
+        if partner.on and ((UnitInParty and UnitInParty(partner.name)) or (UnitInRaid and UnitInRaid(partner.name))) then out[#out + 1] = partner.name end
     end
 
     return out
 end
 
+-- The Quest sharing window
 local function buildShare()
     share = Window("SterlingQuestShare", 320, 200, "Quest sharing")
 
@@ -2801,25 +2862,28 @@ local function buildShare()
     share.refresh:SetScript("OnClick", function() if share.name then S.RequestPartner(share.name) end; S.UI_ShareWindow(share.name) end)
 
     share.note = share:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); share.note:SetPoint("BOTTOMLEFT", 10, 8); share.note:SetPoint("RIGHT", -10, 0); share.note:SetJustifyH("LEFT"); share.note:SetTextColor(.5, .55, .65)
+
+    -- A Quest sharing row, made when first needed
     share.Row = function(i)
-        local r = share.rows[i]
+        local row = share.rows[i]
 
-        if r then return r end
+        if row then return row end
 
-        r = CreateFrame("Frame", nil, share); r:SetHeight(20); r:SetPoint("LEFT", 10, 0); r:SetPoint("RIGHT", -10, 0)
-        r.text = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.text:SetPoint("LEFT", 0, 0); r.text:SetPoint("RIGHT", -70, 0); r.text:SetJustifyH("LEFT"); r.text:SetWordWrap(false)
-        r.btn = Button(r, "", 60); r.btn:SetPoint("RIGHT", 0, 0)
-        r.hit = CreateFrame("Frame", nil, r); r.hit:SetPoint("TOPLEFT"); r.hit:SetPoint("BOTTOMRIGHT", -70, 0)
+        row = CreateFrame("Frame", nil, share); row:SetHeight(20); row:SetPoint("LEFT", 10, 0); row:SetPoint("RIGHT", -10, 0)
+        row.text = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.text:SetPoint("LEFT", 0, 0); row.text:SetPoint("RIGHT", -70, 0); row.text:SetJustifyH("LEFT"); row.text:SetWordWrap(false)
+        row.btn = Button(row, "", 60); row.btn:SetPoint("RIGHT", 0, 0)
+        row.hit = CreateFrame("Frame", nil, row); row.hit:SetPoint("TOPLEFT"); row.hit:SetPoint("BOTTOMRIGHT", -70, 0)
 
-        r.hit:SetScript("OnEnter", function(self) if r.tip then GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(r.tip, 1, 1, 1, true); GameTooltip:Show() end end)
-        r.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row.hit:SetScript("OnEnter", function(self) if row.tip then GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(row.tip, 1, 1, 1, true); GameTooltip:Show() end end)
+        row.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        share.rows[i] = r
+        share.rows[i] = row
 
-        return r
+        return row
     end
 end
 
+-- Opens Quest sharing for a partner in your group
 function S.UI_ShareWindow(name)
     if not share then buildShare() end
 
@@ -2829,7 +2893,7 @@ function S.UI_ShareWindow(name)
 
     share.name = name
 
-    for _, r in ipairs(share.rows) do r:Hide() end
+    for _, row in ipairs(share.rows) do row:Hide() end
 
     if not name then
         share.title:SetText("Quest sharing"); share.who:SetEnabled(false); share.who:Refresh()
@@ -2841,47 +2905,49 @@ function S.UI_ShareWindow(name)
     share.title:SetText("Quest sharing with " .. label)
     share.who:SetEnabled(#gp > 1); share.who:Refresh()
 
-    local c = S.ShareCandidates(name)
+    local candidates = S.ShareCandidates(name)
     local y, i = -62, 0
 
+    -- A heading row
     local function header(text)
-        i = i + 1; local r = share.Row(i)
+        i = i + 1; local row = share.Row(i)
 
-        r:ClearAllPoints(); r:SetPoint("TOPLEFT", 10, y); r:SetPoint("RIGHT", -10, 0)
+        row:ClearAllPoints(); row:SetPoint("TOPLEFT", 10, y); row:SetPoint("RIGHT", -10, 0)
 
-        r.text:SetText(text); r.text:SetTextColor(S.AR, S.AG, S.AB); r.btn:Hide(); r.tip = nil; r:Show(); y = y - 18
+        row.text:SetText(text); row.text:SetTextColor(S.AR, S.AG, S.AB); row.btn:Hide(); row.tip = nil; row:Show(); y = y - 18
     end
 
-    local function item(it, btnText, onClick)
-        i = i + 1; local r = share.Row(i)
+    -- A quest row with a button
+    local function item(item, btnText, onClick)
+        i = i + 1; local row = share.Row(i)
 
-        r:ClearAllPoints(); r:SetPoint("TOPLEFT", 10, y); r:SetPoint("RIGHT", -10, 0)
-        r.text:SetText((it.ok and "" or "|cff8a93a8") .. it.name .. (it.ok and "" or ("|r  |cff8a93a8" .. (it.why or "") .. "|r")))
-        r.text:SetTextColor(S.TR, S.TG, S.TB)
+        row:ClearAllPoints(); row:SetPoint("TOPLEFT", 10, y); row:SetPoint("RIGHT", -10, 0)
+        row.text:SetText((item.ok and "" or "|cff8a93a8") .. item.name .. (item.ok and "" or ("|r  |cff8a93a8" .. (item.why or "") .. "|r")))
+        row.text:SetTextColor(S.TR, S.TG, S.TB)
 
-        r.tip = it.why
+        row.tip = item.why
 
-        r.btn:SetText(btnText); r.btn:SetEnabled(it.ok); r.btn:SetScript("OnClick", onClick); r.btn:Show()
+        row.btn:SetText(btnText); row.btn:SetEnabled(item.ok); row.btn:SetScript("OnClick", onClick); row.btn:Show()
 
-        r:Show(); y = y - 20
+        row:Show(); y = y - 20
     end
 
     local MAX = 7
 
-    header(label .. " can share with you" .. (#c.theirs == 0 and "  |cff8a93a8(nothing)|r" or ""))
+    header(label .. " can share with you" .. (#candidates.theirs == 0 and "  |cff8a93a8(nothing)|r" or ""))
 
-    for k, it in ipairs(c.theirs) do
-        if k > MAX then i = i + 1; local r = share.Row(i); r:ClearAllPoints(); r:SetPoint("TOPLEFT", 10, y); r.text:SetText("|cff8a93a8+" .. (#c.theirs - MAX) .. " more|r"); r.btn:Hide(); r:Show(); y = y - 18; break end
+    for k, their in ipairs(candidates.theirs) do
+        if k > MAX then i = i + 1; local row = share.Row(i); row:ClearAllPoints(); row:SetPoint("TOPLEFT", 10, y); row.text:SetText("|cff8a93a8+" .. (#candidates.theirs - MAX) .. " more|r"); row.btn:Hide(); row:Show(); y = y - 18; break end
 
-        item(it, "Ask", function() S.AskShare(name, it.qid) end)
+        item(their, "Ask", function() S.AskShare(name, their.qid) end)
     end
 
     y = y - 6
 
-    header("You can share with " .. label .. (#c.mine == 0 and "  |cff8a93a8(nothing)|r" or ""))
+    header("You can share with " .. label .. (#candidates.mine == 0 and "  |cff8a93a8(nothing)|r" or ""))
 
-    for k, it in ipairs(c.mine) do
-        if k > MAX then i = i + 1; local r = share.Row(i); r:ClearAllPoints(); r:SetPoint("TOPLEFT", 10, y); r.text:SetText("|cff8a93a8+" .. (#c.mine - MAX) .. " more|r"); r.btn:Hide(); r:Show(); y = y - 18; break end
+    for k, it in ipairs(candidates.mine) do
+        if k > MAX then i = i + 1; local row = share.Row(i); row:ClearAllPoints(); row:SetPoint("TOPLEFT", 10, y); row.text:SetText("|cff8a93a8+" .. (#candidates.mine - MAX) .. " more|r"); row.btn:Hide(); row:Show(); y = y - 18; break end
 
         item(it, "Share", function() S.ShareQuest(it.qid) end)
     end
@@ -2896,13 +2962,15 @@ function S.UI_ShareRefresh() if share and share:IsShown() then S.UI_ShareWindow(
 -- When a partner joins the group: open the sharing window (after combat if needed).
 local pendingJoin
 
+-- A partner joined your group: offer to share quests if either of you can
 function S.OnPartnerJoined(name)
     if not S.Opt("groupHints", true) then return end
 
+    -- Opens the sharing window if there's anything to share
     local function open()
-        local c = S.ShareCandidates(name)
+        local candidates = S.ShareCandidates(name)
 
-        if #c.theirs == 0 and #c.mine == 0 then return end
+        if #candidates.theirs == 0 and #candidates.mine == 0 then return end
 
         S.UI_ShareWindow(name)
     end
@@ -2924,6 +2992,7 @@ end
 local ask
 local askQueue = {}
 
+-- Shows the next "can you share this quest?" prompt
 local function showAsk()
     local item = table.remove(askQueue, 1)
 
@@ -2948,8 +3017,9 @@ local function showAsk()
     ask:Show()
 end
 
+-- A partner asked you to share a quest
 function S.UI_ShareAsk(from, qid)
-    for _, it in ipairs(askQueue) do if it.from == from and it.qid == qid then return end end
+    for _, item in ipairs(askQueue) do if item.from == from and item.qid == qid then return end end
 
     askQueue[#askQueue + 1] = { from = from, qid = qid }
 
@@ -2970,44 +3040,47 @@ end)
 -- Add a partner: type a name, or invite someone Sterling found in your party, guild or friends.
 local SRC_LABEL = { party = "In your party", guild = "In your guild", friend = "On your friends list", other = "Found elsewhere" }
 
-local function classRGB(cls)
-    local c = cls and cls ~= "" and ((type(C_ClassColor) == "table" and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(cls)) or (type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[cls]))
+-- A class's colour
+local function classRGB(classToken)
+    local c = classToken and classToken ~= "" and ((type(C_ClassColor) == "table" and C_ClassColor.GetClassColor and C_ClassColor.GetClassColor(classToken)) or (type(RAID_CLASS_COLORS) == "table" and RAID_CLASS_COLORS[classToken]))
 
     if c and c.r then return c.r, c.g, c.b end
 
     return .6, .62, .7
 end
 
+-- The Add a partner window
 function S.UI_AddPartner()
     if not addWin then
         addWin = Window("SterlingQuestAddPartner", 330, 400, "Add a partner")
 
-        local f = addWin
+        local frame = addWin
 
-        f.eb = CreateFrame("EditBox", nil, f, "InputBoxTemplate"); f.eb:SetSize(204, 22); f.eb:SetPoint("TOPLEFT", 19, -38); f.eb:SetAutoFocus(false); f.eb:SetMaxLetters(30)
-        f.go = Button(f, "Add", 70); f.go:SetPoint("TOPRIGHT", -14, -38)
+        frame.eb = CreateFrame("EditBox", nil, frame, "InputBoxTemplate"); frame.eb:SetSize(204, 22); frame.eb:SetPoint("TOPLEFT", 19, -38); frame.eb:SetAutoFocus(false); frame.eb:SetMaxLetters(30)
+        frame.go = Button(frame, "Add", 70); frame.go:SetPoint("TOPRIGHT", -14, -38)
 
+        -- Adds and invites the name typed in the box
         local function addTyped()
-            local n = (f.eb:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local n = (frame.eb:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
 
             if n == "" then return end
-            if not S.FindPartner(n) and S.PartnersFull() then f.refresh() return end
+            if not S.FindPartner(n) and S.PartnersFull() then frame.refresh() return end
 
-            SlashCmdList.STERLINGQUEST("partner " .. n); S.Invite(n); f.eb:SetText(""); f.eb:ClearFocus()
+            SlashCmdList.STERLINGQUEST("partner " .. n); S.Invite(n); frame.eb:SetText(""); frame.eb:ClearFocus()
         end
 
-        f.go:SetScript("OnClick", addTyped); f.eb:SetScript("OnEnterPressed", addTyped); f.eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        frame.go:SetScript("OnClick", addTyped); frame.eb:SetScript("OnEnterPressed", addTyped); frame.eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
-        f.hint = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.hint:SetPoint("TOPLEFT", 14, -66); f.hint:SetPoint("RIGHT", -14, 0); f.hint:SetJustifyH("LEFT"); f.hint:SetTextColor(.6, .64, .74)
+        frame.hint = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.hint:SetPoint("TOPLEFT", 14, -66); frame.hint:SetPoint("RIGHT", -14, 0); frame.hint:SetJustifyH("LEFT"); frame.hint:SetTextColor(.6, .64, .74)
 
-        f.hint:SetText("Adds them on your side and sends an invite. They need to accept (or add you back on an older version).")
+        frame.hint:SetText("Adds them on your side and sends an invite. They need to accept (or add you back on an older version).")
 
-        f.head = f:CreateFontString(nil, "OVERLAY", "GameFontNormal"); f.head:SetPoint("TOPLEFT", 14, -96); f.head:SetText("Found with Sterling"); f.head:SetTextColor(S.LabelColor())
-        f.look = Button(f, "Look now", 70); f.look:SetPoint("TOPRIGHT", -14, -92); f.look:SetScript("OnClick", function() S.DiscoverNow(); C_Timer.After(4, function() if f:IsShown() then f.refresh() end end) end)
-        f.rows = {}
+        frame.head = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"); frame.head:SetPoint("TOPLEFT", 14, -96); frame.head:SetText("Found with Sterling"); frame.head:SetTextColor(S.LabelColor())
+        frame.look = Button(frame, "Look now", 70); frame.look:SetPoint("TOPRIGHT", -14, -92); frame.look:SetScript("OnClick", function() S.DiscoverNow(); C_Timer.After(4, function() if frame:IsShown() then frame.refresh() end end) end)
+        frame.rows = {}
 
         for i = 1, 11 do
-            local r = CreateFrame("Frame", nil, f); r:SetHeight(24); r:SetPoint("TOPLEFT", 14, -114 - (i - 1) * 25); r:SetPoint("RIGHT", -14, 0)
+            local r = CreateFrame("Frame", nil, frame); r:SetHeight(24); r:SetPoint("TOPLEFT", 14, -114 - (i - 1) * 25); r:SetPoint("RIGHT", -14, 0)
 
             r.bg = r:CreateTexture(nil, "BACKGROUND"); r.bg:SetAllPoints(); r.bg:SetColorTexture(1, 1, 1, .04)
             r.dot = r:CreateTexture(nil, "ARTWORK"); r.dot:SetSize(8, 8); r.dot:SetPoint("LEFT", 6, 0)
@@ -3019,72 +3092,74 @@ function S.UI_AddPartner()
 
             r.x:SetScript("OnEnter", function(self) self.t:SetTextColor(1, .61, .57); GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText("Hide " .. (r.who or "")); GameTooltip:AddLine("Hides them here for good and ignores their invites and sync. Undo: Options > Sync > Hidden players.", 1, 1, 1, true); GameTooltip:Show() end)
             r.x:SetScript("OnLeave", function(self) self.t:SetTextColor(.6, .62, .7); GameTooltip:Hide() end)
-            r.x:SetScript("OnClick", function() if r.who then S.Block(r.who); f.refresh() end end)
+            r.x:SetScript("OnClick", function() if r.who then S.Block(r.who); frame.refresh() end end)
 
             r.head = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.head:SetPoint("LEFT", 4, -2); r.head:SetTextColor(.6, .64, .74)
-            f.rows[i] = r
+            frame.rows[i] = r
         end
 
-        f.empty = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.empty:SetPoint("TOPLEFT", 14, -118); f.empty:SetPoint("RIGHT", -14, 0); f.empty:SetJustifyH("LEFT"); f.empty:SetTextColor(.6, .64, .74)
+        frame.empty = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.empty:SetPoint("TOPLEFT", 14, -118); frame.empty:SetPoint("RIGHT", -14, 0); frame.empty:SetJustifyH("LEFT"); frame.empty:SetTextColor(.6, .64, .74)
 
-        f.empty:SetText("No one yet. Sterling says a quiet hello to your party, guild and online friends; anyone running it shows up here. Only people on the newest version answer.")
+        frame.empty:SetText("No one yet. Sterling says a quiet hello to your party, guild and online friends; anyone running it shows up here. Only people on the newest version answer.")
 
-        f.more = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.more:SetPoint("BOTTOMLEFT", 14, 10); f.more:SetTextColor(.6, .64, .74)
-        f.refresh = function()
+        frame.more = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.more:SetPoint("BOTTOMLEFT", 14, 10); frame.more:SetTextColor(.6, .64, .74)
+
+        -- Fills the list of Sterling users found nearby
+        frame.refresh = function()
             local list = S.FoundList and S.FoundList() or {}
             local full = S.PartnersFull()
 
-            f.go:SetEnabled(not full)
-            f.hint:SetText(full and ("|cffff9b92" .. S.Mark("bad") .. "Your Sync list is full (" .. S.MAX_PARTNERS .. " partners).|r Remove someone on the Sync tab to add another.")
+            frame.go:SetEnabled(not full)
+            frame.hint:SetText(full and ("|cffff9b92" .. S.Mark("bad") .. "Your Sync list is full (" .. S.MAX_PARTNERS .. " partners).|r Remove someone on the Sync tab to add another.")
                 or "Adds them on your side and sends an invite. They need to accept (or add you back on an older version).")
             local lines, lastSrc = {}, nil
 
-            for _, it in ipairs(list) do
-                if it.src ~= lastSrc then lines[#lines + 1] = { head = SRC_LABEL[it.src] or "Found" }; lastSrc = it.src end
+            for _, item in ipairs(list) do
+                if item.src ~= lastSrc then lines[#lines + 1] = { head = SRC_LABEL[item.src] or "Found" }; lastSrc = item.src end
 
-                lines[#lines + 1] = it
+                lines[#lines + 1] = item
             end
 
-            f.empty:SetShown(#list == 0)
+            frame.empty:SetShown(#list == 0)
 
-            for i, r in ipairs(f.rows) do
-                local it = lines[i]
+            for i, row in ipairs(frame.rows) do
+                local item = lines[i]
 
-                r:SetShown(it ~= nil)
+                row:SetShown(item ~= nil)
 
-                if it then
-                    local isHead = it.head ~= nil
+                if item then
+                    local isHead = item.head ~= nil
 
-                    r.bg:SetShown(not isHead); r.dot:SetShown(not isHead); r.name:SetShown(not isHead); r.meta:SetShown(not isHead); r.x:SetShown(not isHead); r.inv:SetShown(not isHead)
-                    r.head:SetShown(isHead)
+                    row.bg:SetShown(not isHead); row.dot:SetShown(not isHead); row.name:SetShown(not isHead); row.meta:SetShown(not isHead); row.x:SetShown(not isHead); row.inv:SetShown(not isHead)
+                    row.head:SetShown(isHead)
 
-                    if isHead then r.head:SetText(it.head); r.who = nil
+                    if isHead then row.head:SetText(item.head); row.who = nil
                     else
-                        r.who = it.name
+                        row.who = item.name
 
-                        local cr, cg, cb = classRGB(it.class)
+                        local cr, cg, cb = classRGB(item.class)
 
-                        r.dot:SetColorTexture(cr, cg, cb, 1)
-                        r.name:SetText(it.name); r.name:SetTextColor(.35 + .65 * cr, .35 + .65 * cg, .35 + .65 * cb)
+                        row.dot:SetColorTexture(cr, cg, cb, 1)
+                        row.name:SetText(item.name); row.name:SetTextColor(.35 + .65 * cr, .35 + .65 * cg, .35 + .65 * cb)
 
-                        local cmp = S.CompareVer and S.CompareVer(it.ver, S.ADDON_VER) or 0
-                        local verTxt = it.ver and ((cmp < 0 and "|cffff9b92v" .. it.ver .. " (older)|r") or ("v" .. it.ver)) or ""
+                        local cmp = S.CompareVer and S.CompareVer(item.ver, S.ADDON_VER) or 0
+                        local verTxt = item.ver and ((cmp < 0 and "|cffff9b92v" .. item.ver .. " (older)|r") or ("v" .. item.ver)) or ""
 
-                        r.meta:SetText((it.level and ("lvl " .. it.level .. " · ") or "") .. verTxt)
+                        row.meta:SetText((item.level and ("lvl " .. item.level .. " · ") or "") .. verTxt)
 
-                        if it.partner then
-                            r.inv:SetText("Added"); r.inv:Disable(); r.x:Hide()
-                        elseif S.PendingInvite and S.PendingInvite(it.name) then
-                            r.inv:SetText("Sent"); r.inv:Disable()
+                        if item.partner then
+                            row.inv:SetText("Added"); row.inv:Disable(); row.x:Hide()
+                        elseif S.PendingInvite and S.PendingInvite(item.name) then
+                            row.inv:SetText("Sent"); row.inv:Disable()
                         else
-                            r.inv:SetText("Invite"); r.inv:SetEnabled(not full)
-                            r.inv:SetScript("OnClick", function() S.Invite(it.name); f.refresh() end)
+                            row.inv:SetText("Invite"); row.inv:SetEnabled(not full)
+                            row.inv:SetScript("OnClick", function() S.Invite(item.name); frame.refresh() end)
                         end
                     end
                 end
             end
 
-            f.more:SetText(#lines > #f.rows and ("+" .. (#lines - #f.rows) .. " more not shown") or "")
+            frame.more:SetText(#lines > #frame.rows and ("+" .. (#lines - #frame.rows) .. " more not shown") or "")
         end
     end
 
@@ -3094,10 +3169,11 @@ end
 -- The prompt the other player sees when you invite them.
 local invQueue = {}
 
+-- Shows the next invite prompt
 local function showInvite()
-    local it = table.remove(invQueue, 1)
+    local item = table.remove(invQueue, 1)
 
-    if not it then return end
+    if not item then return end
     if not invWin then
         invWin = Window("SterlingQuestInvite", 300, 104, "Sync invite")
 
@@ -3110,15 +3186,16 @@ local function showInvite()
         invWin:HookScript("OnHide", function() C_Timer.After(0.3, showInvite) end)
     end
 
-    invWin.text:SetText("|cffffd100" .. it.from .. "|r wants to sync quest logs with you.\nAccept adds each of you to the other's Sync list.")
-    invWin.yes:SetScript("OnClick", function() invWin.answered = true; invWin:Hide(); S.AcceptInvite(it.from, it.code) end)
-    invWin.no:SetScript("OnClick", function() invWin.answered = true; invWin:Hide(); S.DeclineInvite(it.from, it.code) end)
+    invWin.text:SetText("|cffffd100" .. item.from .. "|r wants to sync quest logs with you.\nAccept adds each of you to the other's Sync list.")
+    invWin.yes:SetScript("OnClick", function() invWin.answered = true; invWin:Hide(); S.AcceptInvite(item.from, item.code) end)
+    invWin.no:SetScript("OnClick", function() invWin.answered = true; invWin:Hide(); S.DeclineInvite(item.from, item.code) end)
     invWin:SetHeight(70 + (invWin.text:GetStringHeight() or 24))
     invWin:Show()
 end
 
+-- Someone invited you to sync
 function S.UI_InvitePrompt(from, code)
-    for _, it in ipairs(invQueue) do if it.from == from then it.code = code return end end
+    for _, item in ipairs(invQueue) do if item.from == from then item.code = code return end end
 
     invQueue[#invQueue + 1] = { from = from, code = code }
 
@@ -3131,6 +3208,7 @@ end
 -- Things held back during a fight: pop-ups, and the Catch-up list (it is the one heavy rebuild).
 local dirtyAfterCombat = false
 
+-- Things that waited for the end of a fight
 function S.AfterCombat()
     if #invQueue > 0 and not (invWin and invWin:IsShown()) then showInvite() end
     if dirtyAfterCombat then dirtyAfterCombat = false; S.UI_Update() end
@@ -3139,6 +3217,7 @@ end
 
 local lastCatchup = 0
 
+-- Should the Catch-up list rebuild now? (at most every 3 seconds in a fight)
 local function catchupNow()
     if not S.InCombat() then return true end
     if GetTime() - lastCatchup >= 3 then lastCatchup = GetTime(); return true end
@@ -3148,6 +3227,7 @@ local function catchupNow()
     return false
 end
 
+-- The main window: title row, tabs, pages
 local function BuildMain()
     local ver = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("Sterling", "Version")) or (GetAddOnMetadata and GetAddOnMetadata("Sterling", "Version")) or "?"
 
@@ -3161,13 +3241,13 @@ local function BuildMain()
     local blizz = {}
 
     for i, t in ipairs(TABS) do
-        local b = S.BlizzTab(main, "SterlingQuestFrameTab" .. i, i, t[2])
+        local button = S.BlizzTab(main, "SterlingQuestFrameTab" .. i, i, t[2])
 
-        if not b then blizz = nil break end
+        if not button then blizz = nil break end
 
-        b:SetScript("OnClick", function() S.UI_Tab(t[1]) end)
+        button:SetScript("OnClick", function() S.UI_Tab(t[1]) end)
 
-        blizz[i] = b; tabs[t[1]] = b; tabOrder[t[1]] = i
+        blizz[i] = button; tabs[t[1]] = button; tabOrder[t[1]] = i
     end
 
     local pagesTop = -34
@@ -3188,6 +3268,7 @@ local function BuildMain()
         main.sep = sep
     end
 
+    -- Shows or hides one main window tab
     S.UI_TabShown = function(key, shown)
         if not tabs[key] then return end
 
@@ -3223,11 +3304,11 @@ local function BuildMain()
     main.notice:Hide()
 
     for _, key in ipairs({ "path", "sessions", "sync", "catchup" }) do
-        local p = CreateFrame("Frame", nil, main); p:SetPoint("TOPLEFT", 12, main.pagesTop - 4); p:SetPoint("BOTTOMRIGHT", -12, 12); p:Hide()
+        local page = CreateFrame("Frame", nil, main); page:SetPoint("TOPLEFT", 12, main.pagesTop - 4); page:SetPoint("BOTTOMRIGHT", -12, 12); page:Hide()
 
-        p:SetFrameLevel(main:GetFrameLevel() + 3)
+        page:SetFrameLevel(main:GetFrameLevel() + 3)
 
-        pages[key] = p
+        pages[key] = page
     end
 
     BuildPath(pages.path)
@@ -3263,20 +3344,22 @@ local function BuildMain()
     main:SetScript("OnUpdate", function(_, dt) acc = acc + dt; if acc > 1 then acc = 0; if main:IsShown() and (S.IsRecording() or current == "sync") then S.UI_Update() end end end)
 end
 
-local function StepText(st)
-    if st.kind == "objective" then return st.text or ((st.quest or "Quest") .. " |cff8a93a8objective|r") end
-    if st.kind == "note" then return st.text or "" end
-    if st.kind == "dungeon" then return "Ran " .. (st.text or "dungeon") end
-    if st.kind == "flight" or st.kind == "ride" then return st.from and (st.from .. " to " .. (st.text or "")) or (st.text or "") end
-    if st.kind == "hearth" then return "to " .. (st.text or "") .. ((st.from and st.from ~= "Hearthstone") and ("  (" .. st.from .. ")") or "") end
-    if st.kind == "travel" then return st.text or st.subzone or "" end
-    if st.kind == "ding" then return "Level " .. st.level end
+-- A step's text for the Path list
+local function StepText(step)
+    if step.kind == "objective" then return step.text or ((step.quest or "Quest") .. " |cff8a93a8objective|r") end
+    if step.kind == "note" then return step.text or "" end
+    if step.kind == "dungeon" then return "Ran " .. (step.text or "dungeon") end
+    if step.kind == "flight" or step.kind == "ride" then return step.from and (step.from .. " to " .. (step.text or "")) or (step.text or "") end
+    if step.kind == "hearth" then return "to " .. (step.text or "") .. ((step.from and step.from ~= "Hearthstone") and ("  (" .. step.from .. ")") or "") end
+    if step.kind == "travel" then return step.text or step.subzone or "" end
+    if step.kind == "ding" then return "Level " .. step.level end
 
-    return st.quest or ""
+    return step.quest or ""
 end
 
 local QUEST_KINDS = { pickup = true, turnin = true, deliver = true, ["do"] = true, objective = true }
 
+-- Fills the Path tab
 local function UpdatePath(page)
     do
         local card = page.card
@@ -3320,11 +3403,11 @@ local function UpdatePath(page)
     page.clear:SetShown(sess ~= nil or S.catchupLabel ~= nil or #S.steps > 0)
 
     local i = S.CurrentIndex()
-    local st = S.steps[i]
+    local step = S.steps[i]
 
     main.right:SetText("")
 
-    local stepTxt = st and ("  |cff8a93a8step " .. i .. " of " .. #S.steps .. "|r") or ""
+    local stepTxt = step and ("  |cff8a93a8step " .. i .. " of " .. #S.steps .. "|r") or ""
 
     if sess then
         page.follow:SetText("Following |cff8ab8ff" .. sess.char .. " - " .. sess.name .. "|r" .. stepTxt)
@@ -3344,34 +3427,34 @@ local function UpdatePath(page)
 
     local card = page.card
 
-    if st then
-        card.pill:Set(st.kind); card.q:SetText(StepText(st))
+    if step then
+        card.pill:Set(step.kind); card.q:SetText(StepText(step))
 
         local bits = {}
 
-        if st.npc and st.npc ~= "" then bits[#bits + 1] = st.npc end
-        if st.kind == "objective" and st.quest then bits[#bits + 1] = st.quest end
-        if st.t then bits[#bits + 1] = "at " .. S.Clock(st.t) end
+        if step.npc and step.npc ~= "" then bits[#bits + 1] = step.npc end
+        if step.kind == "objective" and step.quest then bits[#bits + 1] = step.quest end
+        if step.t then bits[#bits + 1] = "at " .. S.Clock(step.t) end
 
         card.npc:SetText(table.concat(bits, "  |cff55607a|||r  "))
 
         local here = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
 
-        if st.map and st.kind ~= "dungeon" then
-            local zone = S.MapName(st.map)
+        if step.map and step.kind ~= "dungeon" then
+            local zone = S.MapName(step.map)
 
-            if here and here ~= st.map then zone = "|cfff3c56b" .. zone .. " (not here)|r" else zone = "|cff8ab8ff" .. zone .. "|r" end
+            if here and here ~= step.map then zone = "|cfff3c56b" .. zone .. " (not here)|r" else zone = "|cff8ab8ff" .. zone .. "|r" end
 
             local rest = card.npc:GetText() or ""
 
             card.npc:SetText(zone .. (rest ~= "" and ("  |cff55607a|||r  " .. rest) or ""))
         end
 
-        card.way:SetText(st.x and ("/way " .. st.x .. " " .. st.y) or "")
-        card.wayBtn:SetShown(st.x ~= nil)
+        card.way:SetText(step.x and ("/way " .. step.x .. " " .. step.y) or "")
+        card.wayBtn:SetShown(step.x ~= nil)
         page.empty:SetText("")
 
-        local w = (i - 1) / math.max(1, #S.steps) * card:GetWidth(); page.prog:SetShown(w >= 1); page.prog:SetWidth(math.max(1, w))
+        local width = (i - 1) / math.max(1, #S.steps) * card:GetWidth(); page.prog:SetShown(width >= 1); page.prog:SetWidth(math.max(1, width))
     elseif #S.steps == 0 then
         card.pill:Set("travel"); card.q:SetText(sess and "Nothing left to do" or "No path yet"); card.way:SetText("")
         card.npc:SetText(sess and "You've done everything in this session." or "Import a friend's session string, or pick one in Sessions and press Follow.")
@@ -3391,7 +3474,7 @@ local function UpdatePath(page)
     if page.compactState ~= compact then
         page.compactState = compact
 
-        for _, b in pairs(tabs) do b:SetShown(not compact) end
+        for _, tab in pairs(tabs) do tab:SetShown(not compact) end
 
         if main.sep then main.sep:SetShown(not compact) end
         if main.inset then main.inset:SetPoint("TOPLEFT", 6, compact and -30 or (main.pagesTop + 2)) end
@@ -3429,7 +3512,7 @@ local function UpdatePath(page)
     if page.lastGap ~= gap then
         page.lastGap = gap
 
-        for i, r in ipairs(page.rows) do r:ClearAllPoints(); r:SetPoint("TOPLEFT", page.card, "BOTTOMLEFT", 14, -16 - (i - 1) * gap); r:SetPoint("RIGHT", page, "RIGHT", -12, 0) end
+        for i, row in ipairs(page.rows) do row:ClearAllPoints(); row:SetPoint("TOPLEFT", page.card, "BOTTOMLEFT", 14, -16 - (i - 1) * gap); row:SetPoint("RIGHT", page, "RIGHT", -12, 0) end
     end
 
     page.listArea:SetHeight(math.max(18, maxRows * gap))
@@ -3445,26 +3528,26 @@ local function UpdatePath(page)
 
     for r = 1, ROWS do
         local idx = top + r - 1
-        local nx = r <= maxRows and S.steps[idx] or nil
+        local nextStep = r <= maxRows and S.steps[idx] or nil
         local row = page.rows[r]
 
-        row.step = nx
+        row.step = nextStep
 
-        if nx then
-            shown = r; row:Show(); row.pill:Set(nx.kind)
+        if nextStep then
+            shown = r; row:Show(); row.pill:Set(nextStep.kind)
 
             -- a quest step further down that you've already finished (out of order) says done too
-            local isDone = idx < i or (idx > i and nx.qid ~= nil and QUEST_KINDS[nx.kind] and S.StepSatisfied(nx, idx) and true or false)
+            local isDone = idx < i or (idx > i and nextStep.qid ~= nil and QUEST_KINDS[nextStep.kind] and S.StepSatisfied(nextStep, idx) and true or false)
 
             row.done, row.isCurrent = isDone, (idx == i)
 
             row.cur:SetShown(idx == i)
 
             local prevMap = (S.steps[idx - 1] or {}).map
-            local zoneTag = (nx.map and nx.kind ~= "dungeon" and nx.map ~= prevMap) and ("  |cff8ab8ff" .. S.MapName(nx.map) .. "|r") or ""
+            local zoneTag = (nextStep.map and nextStep.kind ~= "dungeon" and nextStep.map ~= prevMap) and ("  |cff8ab8ff" .. S.MapName(nextStep.map) .. "|r") or ""
 
-            row.text:SetText(StepText(nx) .. ((nx.kind == "objective" and nx.text and nx.quest) and ("  |cff8a93a8" .. nx.quest .. "|r") or "") .. (nx.npc and nx.npc ~= "" and ("  |cff8a93a8" .. nx.npc .. "|r") or "") .. zoneTag)
-            row.time:SetText(isDone and ("|cff7ee2a2" .. S.Mark("good") .. "done|r") or (nx.t and S.Clock(nx.t) or ""))
+            row.text:SetText(StepText(nextStep) .. ((nextStep.kind == "objective" and nextStep.text and nextStep.quest) and ("  |cff8a93a8" .. nextStep.quest .. "|r") or "") .. (nextStep.npc and nextStep.npc ~= "" and ("  |cff8a93a8" .. nextStep.npc .. "|r") or "") .. zoneTag)
+            row.time:SetText(isDone and ("|cff7ee2a2" .. S.Mark("good") .. "done|r") or (nextStep.t and S.Clock(nextStep.t) or ""))
             row:SetAlpha(isDone and .55 or 1)
             row.dotl:SetVertexColor(isDone and .3 or .33, isDone and .6 or .38, isDone and .4 or .5, 1)
         else row:Hide() end
@@ -3480,6 +3563,7 @@ local function UpdatePath(page)
     else main:SetHeight(STD_H) end
 end
 
+-- Fills the Sessions tab
 local function UpdateSessions(page)
     local rec = S.Recording()
 
@@ -3498,34 +3582,35 @@ local function UpdateSessions(page)
     page.sb:Set(page.offset, SROWS, #list)
 
     for i = 1, SROWS do
-        local r, sess = page.rows[i], list[page.offset + i]
+        local row, sess = page.rows[i], list[page.offset + i]
 
-        r.sess = sess
+        row.sess = sess
 
         if sess then
-            shown = i; r:Show()
+            shown = i; row:Show()
 
             local mine = not sess.imported
 
-            r.accent:SetColorTexture(mine and .54 or .49, mine and .72 or .89, mine and 1 or .64, 1)
-            r.nm:SetText(sess.name)
-            r.meta:SetText(S.SessionSummary(sess))
-            r.who:SetText(mine and "|cff8ab8ffyou|r" or ("|cff7ee2a2" .. sess.char .. "|r"))
+            row.accent:SetColorTexture(mine and .54 or .49, mine and .72 or .89, mine and 1 or .64, 1)
+            row.nm:SetText(sess.name)
+            row.meta:SetText(S.SessionSummary(sess))
+            row.who:SetText(mine and "|cff8ab8ffyou|r" or ("|cff7ee2a2" .. sess.char .. "|r"))
 
             local following = SterlingQuestDB.following == sess.id
 
-            r.b1:SetText(mine and "Export" or (following and "Stop" or "Follow"))
-            r.b1:SetScript("OnClick", function()
+            row.b1:SetText(mine and "Export" or (following and "Stop" or "Follow"))
+            row.b1:SetScript("OnClick", function()
                 if mine then S.UI_ShowExport(sess.id) elseif following then S.StopFollowing(); S.UI_Update() else S.FollowSession(sess, true); S.UI_Tab("path") end
             end)
 
-            r.b2:SetScript("OnClick", function() S.MapSetSession(sess); S.MapToggle() end)
-        else r:Hide() end
+            row.b2:SetScript("OnClick", function() S.MapSetSession(sess); S.MapToggle() end)
+        else row:Hide() end
     end
 
     main:SetHeight(STD_H)
 end
 
+-- The next free line in the Compare tab
 local function Line(page, idx)
     local l = page.lines[idx]
 
@@ -3534,12 +3619,14 @@ local function Line(page, idx)
     l:Show(); return l
 end
 
+-- Fills the Compare tab
 local function UpdateCompare(page)
-    for _, l in ipairs(page.lines) do l:Hide() end
+    for _, line in ipairs(page.lines) do line:Hide() end
 
     local d = S.Diff()
     local y, n = -2, 0
 
+    -- Adds a line of text
     local function add(text, r, g, b, indent)
         n = n + 1; local l = Line(page, n); l:ClearAllPoints(); l:SetPoint("TOPLEFT", page.content, "TOPLEFT", indent or 0, y)
         l:SetText(text); l:SetTextColor(r, g, b); y = y - (l:GetStringHeight() + 4)
@@ -3554,12 +3641,13 @@ local function UpdateCompare(page)
         add("No partner data yet.", .9, .9, .9)
         add("Add a partner in the Sync tab, or import a quest-log export.", .64, .67, .75)
     else
-        local p = S.partner
+        local snap = S.partner
 
-        page.who:SetText(("You (lvl %d) vs %s (lvl %d), %s"):format(UnitLevel("player"), p.name, p.level, p.source == "live" and "live" or (p.source == "import" and "imported" or ("saved " .. ago(p.at)))))
+        page.who:SetText(("You (lvl %d) vs %s (lvl %d), %s"):format(UnitLevel("player"), snap.name, snap.level, snap.source == "live" and "live" or (snap.source == "import" and "imported" or ("saved " .. ago(snap.at)))))
 
         y = y - 2
 
+        -- A heading with its list of quests
         local function section(title, list, fmt, r, g, b)
             add(title .. "  (" .. #list .. ")", r, g, b)
 
@@ -3571,20 +3659,20 @@ local function UpdateCompare(page)
         end
 
         -- current quest logs only; finished-quest history lives in Everyone
-        section("In their log, not yours", d.theyHave, function(q)
-            local done = S.IsFlaggedDone(q.qid)
+        section("In their log, not yours", d.theyHave, function(quest)
+            local done = S.IsFlaggedDone(quest.qid)
 
-            return q.title .. (q.complete and "  |cff7ee2a2(they're ready to turn in)|r" or "") .. (done and "  |cff8a93a8(you finished it)|r" or "") end, S.AR, S.AG, S.AB)
-        section("In your log, not theirs", d.youHave, function(q)
-            return q.title .. (q.complete and "  |cff7ee2a2(you're ready to turn in)|r" or "") .. (p.completed[q.qid] and "  |cff8a93a8(they finished it)|r" or "") end, .95, .77, .42)
+            return quest.title .. (quest.complete and "  |cff7ee2a2(they're ready to turn in)|r" or "") .. (done and "  |cff8a93a8(you finished it)|r" or "") end, S.AR, S.AG, S.AB)
+        section("In your log, not theirs", d.youHave, function(quest)
+            return quest.title .. (quest.complete and "  |cff7ee2a2(you're ready to turn in)|r" or "") .. (snap.completed[quest.qid] and "  |cff8a93a8(they finished it)|r" or "") end, .95, .77, .42)
         add("Both have, different progress  (" .. #d.shared .. ")", .76, .66, 1)
 
         if #d.shared == 0 then add("nothing", .5, .55, .65, 12) end
 
-        for _, q in ipairs(d.shared) do
-            add(q.title .. (q.theyDone and not q.youDone and "  |cff7ee2a2(they're ready to turn in)|r" or (q.youDone and not q.theyDone and "  |cfff3c56b(you're ready to turn in)|r" or "")), .85, .87, .92, 12)
+        for _, quest in ipairs(d.shared) do
+            add(quest.title .. (quest.theyDone and not quest.youDone and "  |cff7ee2a2(they're ready to turn in)|r" or (quest.youDone and not quest.theyDone and "  |cfff3c56b(you're ready to turn in)|r" or "")), .85, .87, .92, 12)
 
-            for _, o in ipairs(q.diff) do add("you: " .. tostring(o.you or "-") .. "   they: " .. tostring(o.they or "-"), .6, .64, .74, 24) end
+            for _, o in ipairs(quest.diff) do add("you: " .. tostring(o.you or "-") .. "   they: " .. tostring(o.they or "-"), .6, .64, .74, 24) end
         end
 
         y = y - 8
@@ -3603,11 +3691,11 @@ end
 local function versionNotice()
     local red, newer = {}, nil
 
-    for _, p in ipairs(S.Partners()) do
-        local vs, who, ver = S.VersionState(p.name)
+    for _, partner in ipairs(S.Partners()) do
+        local vs, who, ver = S.VersionState(partner.name)
 
-        if vs == "nosync" then red[#red + 1] = S.PartnerLabel(p.name) .. (who == "they" and " needs to update" or " is ahead of you")
-        elseif vs == "newer" and not newer then newer = { S.PartnerLabel(p.name), ver } end
+        if vs == "nosync" then red[#red + 1] = S.PartnerLabel(partner.name) .. (who == "they" and " needs to update" or " is ahead of you")
+        elseif vs == "newer" and not newer then newer = { S.PartnerLabel(partner.name), ver } end
     end
 
     local n = main.notice
@@ -3637,6 +3725,7 @@ function S.UI_TestTag()
     main.testTag:SetShown(S.testMode ~= nil)
 end
 
+-- Updates whatever is showing
 function S.UI_Update()
     if main and (main.testTag or S.testMode) then S.UI_TestTag() end
     if not main or not main:IsShown() then if SterlingQuestMinimapButton then S.UI_MinimapState() end return end
@@ -3654,10 +3743,10 @@ function S.UI_Update()
     if pages.compare and pages.compare:IsShown() then UpdateCompare(pages.compare) end
     if addWin and addWin:IsShown() and addWin.refresh then S.Safe("the Add window", addWin.refresh) end
     if pages.options and pages.options:IsShown() then
-        local pg = pages.options.inner
+        local page = pages.options.inner
 
-        if pg.trashCount then pg.trashCount() end
-        if pg.packText then pg.packText() end
+        if page.trashCount then page.trashCount() end
+        if page.packText then page.packText() end
     end
 
     refreshProfile()
@@ -3667,17 +3756,18 @@ end
 -- Compare: its own window, opened from a partner's right-click menu (or /st compare)
 local cmpWin
 
+-- Opens the Compare window for a partner
 function S.UI_Compare(name)
     if name then S.SelectPartner(name) end
     if not cmpWin then
         cmpWin = Window("SterlingQuestCompare", 370, STD_H, "Compare")
 
-        local p = CreateFrame("Frame", nil, cmpWin); p:SetPoint("TOPLEFT", 12, -38); p:SetPoint("BOTTOMRIGHT", -12, 12)
-        local inset = S.Inset(cmpWin); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6); p:SetFrameLevel(inset:GetFrameLevel() + 2) end
+        local page = CreateFrame("Frame", nil, cmpWin); page:SetPoint("TOPLEFT", 12, -38); page:SetPoint("BOTTOMRIGHT", -12, 12)
+        local inset = S.Inset(cmpWin); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6); page:SetFrameLevel(inset:GetFrameLevel() + 2) end
 
-        pages.compare = p
+        pages.compare = page
 
-        BuildCompare(p)
+        BuildCompare(page)
         cmpWin:HookScript("OnShow", function() S.UI_Update() end)
     end
 
@@ -3687,59 +3777,60 @@ end
 -- Options: a wider window of its own, so the page has room and scales
 local optWin
 
+-- Opens Options
 function S.UI_Options()
     if not optWin then
         optWin = Window("SterlingQuestOptions", 480, 560, "Sterling Quest Sync options")
 
-        local p = CreateFrame("Frame", nil, optWin); p:SetPoint("TOPLEFT", 12, -38); p:SetPoint("BOTTOMRIGHT", -10, 12)
-        local inset = S.Inset(optWin); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6); p:SetFrameLevel(inset:GetFrameLevel() + 2) end
+        local page = CreateFrame("Frame", nil, optWin); page:SetPoint("TOPLEFT", 12, -38); page:SetPoint("BOTTOMRIGHT", -10, 12)
+        local inset = S.Inset(optWin); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6); page:SetFrameLevel(inset:GetFrameLevel() + 2) end
 
-        pages.options = p
+        pages.options = page
 
-        BuildOptions(p)
+        BuildOptions(page)
 
         -- tabs for the options window: Blizzard bottom tabs, or our strip in the title area
-        p.tabButtons, p.tabIndex = {}, {}
+        page.tabButtons, page.tabIndex = {}, {}
 
         local blizz = {}
 
         for i, t in ipairs(OPT_TABS) do
-            local b = S.BlizzTab(optWin, "SterlingQuestOptionsTab" .. i, i, t[2])
+            local button = S.BlizzTab(optWin, "SterlingQuestOptionsTab" .. i, i, t[2])
 
-            if not b then blizz = nil break end
+            if not button then blizz = nil break end
 
-            b:SetScript("OnClick", function() p.ShowTab(t[1]) end)
+            button:SetScript("OnClick", function() page.ShowTab(t[1]) end)
 
-            blizz[i] = b; p.tabButtons[t[1]] = b; p.tabIndex[t[1]] = i
+            blizz[i] = button; page.tabButtons[t[1]] = button; page.tabIndex[t[1]] = i
         end
 
         if blizz then
-            p.Tabs = blizz; p.numTabs = #blizz; optWin.Tabs = blizz; optWin.numTabs = #blizz
-            p.Tabs = blizz
+            page.Tabs = blizz; page.numTabs = #blizz; optWin.Tabs = blizz; optWin.numTabs = #blizz
+            page.Tabs = blizz
 
             S.LayoutTabs(optWin, blizz)
 
             -- tabs belong to the window, but selecting goes through the page: point it at the window's layout
-            p.sterlingApplyTabs = function() if optWin.sterlingApplyTabs then optWin.sterlingApplyTabs() end end
+            page.sterlingApplyTabs = function() if optWin.sterlingApplyTabs then optWin.sterlingApplyTabs() end end
         else
-            p:SetPoint("TOPLEFT", 12, -64); if inset then inset:SetPoint("TOPLEFT", 6, -56) end
+            page:SetPoint("TOPLEFT", 12, -64); if inset then inset:SetPoint("TOPLEFT", 6, -56) end
 
             local x = 8
 
             for _, t in ipairs(OPT_TABS) do
-                local b = CreateFrame("Button", nil, optWin); b:SetSize(100, 24); b:SetPoint("TOPLEFT", x, -30); x = x + 104
+                local button = CreateFrame("Button", nil, optWin); button:SetSize(100, 24); button:SetPoint("TOPLEFT", x, -30); x = x + 104
 
-                b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); b.text:SetPoint("CENTER"); b.text:SetText(t[2])
-                b.line = b:CreateTexture(nil, "ARTWORK"); b.line:SetPoint("BOTTOMLEFT", 8, 0); b.line:SetPoint("BOTTOMRIGHT", -8, 0); b.line:SetHeight(2); b.line:SetColorTexture(S.AR, S.AG, S.AB, 1)
-                b.own = true
+                button.text = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); button.text:SetPoint("CENTER"); button.text:SetText(t[2])
+                button.line = button:CreateTexture(nil, "ARTWORK"); button.line:SetPoint("BOTTOMLEFT", 8, 0); button.line:SetPoint("BOTTOMRIGHT", -8, 0); button.line:SetHeight(2); button.line:SetColorTexture(S.AR, S.AG, S.AB, 1)
+                button.own = true
 
-                b:SetScript("OnClick", function() p.ShowTab(t[1]) end)
+                button:SetScript("OnClick", function() page.ShowTab(t[1]) end)
 
-                p.tabButtons[t[1]] = b
+                page.tabButtons[t[1]] = button
             end
         end
 
-        p.ShowTab("general")
+        page.ShowTab("general")
         optWin:HookScript("OnShow", function() S.UI_Update() end)
         optWin:SetScale(S.Opt("scale", 1))
     end
@@ -3747,6 +3838,7 @@ function S.UI_Options()
     optWin:Show(); S.UI_Update()
 end
 
+-- Opens or closes the main window
 function S.UI_Toggle(show)
     if show == nil then show = not main:IsShown() end
     if show then main:Show(); S.UI_Tab(current) else main:Hide() end
@@ -3758,15 +3850,17 @@ end
 local every
 local COLW = 78
 
-local function cellFor(st)
+-- The text and colour for one partner's cell in the Everyone window
+local function cellFor(state)
     -- st: nil | { done=true } | { inLog=true, complete=bool, prog="3/8" }
-    if not st then return "-", .45, .48, .56 end
-    if st.done then return "done", .49, .89, .64 end
-    if st.complete then return "ready", .95, .85, .4 end
+    if not state then return "-", .45, .48, .56 end
+    if state.done then return "done", .49, .89, .64 end
+    if state.complete then return "ready", .95, .85, .4 end
 
-    return st.prog or "in log", S.AR, S.AG, S.AB
+    return state.prog or "in log", S.AR, S.AG, S.AB
 end
 
+-- The Everyone window: every quest in anyone's log, one column per partner
 function S.UI_Everyone()
     if not every then
         every = Window("SterlingQuestEveryone", 560, 420, "Everyone's quests")
@@ -3801,15 +3895,16 @@ function S.UI_Everyone()
     local people = { { name = S.MyName(), me = true } }
     local listed = {}
 
-    for _, p in ipairs(S.Partners()) do listed[p.name] = true; if p.on and S.snaps[p.name] then people[#people + 1] = { name = p.name, snap = S.snaps[p.name] } end end
+    for _, partner in ipairs(S.Partners()) do listed[partner.name] = true; if partner.on and S.snaps[partner.name] then people[#people + 1] = { name = partner.name, snap = S.snaps[partner.name] } end end
     for n, sn in pairs(S.snaps) do if not listed[n] then people[#people + 1] = { name = n, snap = sn } end end   -- imports with no partner entry
-    for _, pp in ipairs(people) do if pp.snap then pp.stale = pp.snap.source ~= "live" and (time() - (pp.snap.at or 0)) > 86400 end end
+    for _, person in ipairs(people) do if person.snap then person.stale = person.snap.source ~= "live" and (time() - (person.snap.at or 0)) > 86400 end end
 
     S.Refresh()
 
     -- gather quests
     local quests, order = {}, {}
 
+    -- Adds a quest to the table (once)
     local function touch(qid, title)
         if not quests[qid] then quests[qid] = { qid = qid, title = title, st = {} }; order[#order + 1] = qid end
         if title and (not quests[qid].title or quests[qid].title:find("^Quest #")) then quests[qid].title = title end
@@ -3817,45 +3912,45 @@ function S.UI_Everyone()
         return quests[qid]
     end
 
-    for qid, q in pairs(S.log) do
+    for qid, quest in pairs(S.log) do
         local objs = {}
 
-        if S.ObjectiveList then for _, o in ipairs(S.ObjectiveList(qid, q.index)) do local a, b = tostring(o.text or ""):match("(%d+)%s*/%s*(%d+)"); if a then objs[#objs + 1] = a .. "/" .. b end end end
+        if S.ObjectiveList then for _, o in ipairs(S.ObjectiveList(qid, quest.index)) do local a, b = tostring(o.text or ""):match("(%d+)%s*/%s*(%d+)"); if a then objs[#objs + 1] = a .. "/" .. b end end end
 
-        touch(qid, q.title).st[1] = { inLog = true, complete = q.complete, prog = #objs > 0 and table.concat(objs, " ") or nil }
+        touch(qid, quest.title).st[1] = { inLog = true, complete = quest.complete, prog = #objs > 0 and table.concat(objs, " ") or nil }
     end
 
     for qid in pairs(S.completed) do touch(qid, S.QuestName(qid)).st[1] = { done = true } end
     for i = 2, #people do
-        local sn = people[i].snap
+        local snap = people[i].snap
 
-        for qid, q in pairs(sn.log) do
+        for qid, quest in pairs(snap.log) do
             local objs = {}
 
-            for _, t in ipairs(q.objs or {}) do local a, b = tostring(t):match("(%d+)%s*/%s*(%d+)"); if a then objs[#objs + 1] = a .. "/" .. b end end
+            for _, objective in ipairs(quest.objs or {}) do local a, b = tostring(objective):match("(%d+)%s*/%s*(%d+)"); if a then objs[#objs + 1] = a .. "/" .. b end end
 
-            touch(qid, q.title).st[i] = { inLog = true, complete = q.complete, prog = #objs > 0 and table.concat(objs, " ") or nil }
+            touch(qid, quest.title).st[i] = { inLog = true, complete = quest.complete, prog = #objs > 0 and table.concat(objs, " ") or nil }
         end
 
-        for qid in pairs(sn.completed) do if not quests[qid] or not quests[qid].st[i] then touch(qid, nil).st[i] = { done = true } end end
+        for qid in pairs(snap.completed) do if not quests[qid] or not quests[qid].st[i] then touch(qid, nil).st[i] = { done = true } end end
     end
 
     -- only quests that matter: anyone has it in the log, or it's done by some but not all
     local rows = {}
 
     for _, qid in ipairs(order) do
-        local q = quests[qid]
+        local quest = quests[qid]
         local anyLog, doneCount = false, 0
 
-        for i = 1, #people do local st = q.st[i]; if st and st.inLog then anyLog = true end; if st and st.done then doneCount = doneCount + 1 end end
+        for i = 1, #people do local state = quest.st[i]; if state and state.inLog then anyLog = true end; if state and state.done then doneCount = doneCount + 1 end end
 
         if anyLog or (doneCount > 0 and doneCount < #people) then
-            local me = q.st[1]
+            local me = quest.st[1]
 
-            q.behind = (not (me and me.done)) and (function() for i = 2, #people do if q.st[i] and q.st[i].done then return true end end return false end)()
-            q.ahead = (me and me.done) and (function() for i = 2, #people do if not (q.st[i] and q.st[i].done) then return true end end return false end)()
-            q.title = q.title or S.QuestName(qid)
-            rows[#rows + 1] = q
+            quest.behind = (not (me and me.done)) and (function() for i = 2, #people do if quest.st[i] and quest.st[i].done then return true end end return false end)()
+            quest.ahead = (me and me.done) and (function() for i = 2, #people do if not (quest.st[i] and quest.st[i].done) then return true end end return false end)()
+            quest.title = quest.title or S.QuestName(qid)
+            rows[#rows + 1] = quest
         end
     end
 
@@ -3868,7 +3963,7 @@ function S.UI_Everyone()
     end)
 
     -- header
-    for _, c in ipairs(every.head.cols) do c:Hide() end
+    for _, col in ipairs(every.head.cols) do col:Hide() end
 
     -- the window grows with the number of people (up to 860 wide), then the columns narrow, so ten
     -- partners still fit without anything running off the side
@@ -3881,23 +3976,23 @@ function S.UI_Everyone()
     local COLW = math.max(44, math.min(COLW, math.floor((headW - 150) / np)))
     local nameW = math.max(120, headW - COLW * np - 8)
 
-    for i, pp in ipairs(people) do
+    for i, person in ipairs(people) do
         local c = every.head.cols[i]
 
         if not c then c = every.head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); every.head.cols[i] = c end
 
         c:ClearAllPoints(); c:SetPoint("LEFT", every.head, "LEFT", nameW + (i - 1) * COLW, 0); c:SetWidth(COLW); c:SetJustifyH("CENTER"); c:SetWordWrap(false)
-        c:SetText(pp.me and "You" or (S.PartnerLabel(pp.name) .. (pp.stale and "\n|cff8891a5" .. agoShort(pp.snap.at) .. "|r" or ""))); c:SetTextColor(S.TR, S.TG, S.TB); c:Show()
+        c:SetText(person.me and "You" or (S.PartnerLabel(person.name) .. (person.stale and "\n|cff8891a5" .. agoShort(person.snap.at) .. "|r" or ""))); c:SetTextColor(S.TR, S.TG, S.TB); c:Show()
     end
 
     for i = np + 1, #every.head.cols do every.head.cols[i]:Hide() end
 
     -- rows
-    for _, r in ipairs(every.rows) do r:Hide() end
+    for _, row in ipairs(every.rows) do row:Hide() end
 
     local y = 0
 
-    for n, q in ipairs(rows) do
+    for n, row in ipairs(rows) do
         local r = every.rows[n]
 
         if not r then
@@ -3909,23 +4004,23 @@ function S.UI_Everyone()
         end
 
         r:ClearAllPoints(); r:SetPoint("TOPLEFT", 0, -y); r:SetPoint("RIGHT", 0, 0)
-        r.title:SetWidth(nameW - 8); r.title:SetText((q.behind and S.Mark("bad") or (q.ahead and S.Mark("warn") or "")) .. q.title)
+        r.title:SetWidth(nameW - 8); r.title:SetText((row.behind and S.Mark("bad") or (row.ahead and S.Mark("warn") or "")) .. row.title)
 
-        if q.behind then r.bg:SetColorTexture(1, .3, .3, .12); r.title:SetTextColor(1, .75, .72)
-        elseif q.ahead then r.bg:SetColorTexture(1, .8, .2, .1); r.title:SetTextColor(1, .92, .7)
+        if row.behind then r.bg:SetColorTexture(1, .3, .3, .12); r.title:SetTextColor(1, .75, .72)
+        elseif row.ahead then r.bg:SetColorTexture(1, .8, .2, .1); r.title:SetTextColor(1, .92, .7)
         else r.bg:SetColorTexture(1, 1, 1, n % 2 == 0 and .03 or 0); r.title:SetTextColor(.9, .92, 1) end
         for i = 1, #people do
-            local c = r.cells[i]
+            local cell = r.cells[i]
 
-            if not c then c = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.cells[i] = c end
+            if not cell then cell = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.cells[i] = cell end
 
-            c:ClearAllPoints(); c:SetPoint("LEFT", r, "LEFT", nameW + (i - 1) * COLW, 0); c:SetWidth(COLW); c:SetJustifyH("CENTER")
+            cell:ClearAllPoints(); cell:SetPoint("LEFT", r, "LEFT", nameW + (i - 1) * COLW, 0); cell:SetWidth(COLW); cell:SetJustifyH("CENTER")
 
-            local t, cr, cg, cb = cellFor(q.st[i])
+            local t, cr, cg, cb = cellFor(row.st[i])
 
             if people[i].stale then cr, cg, cb = cr * .55, cg * .55, cb * .55 end
 
-            c:SetText(t); c:SetTextColor(cr, cg, cb); c:Show()
+            cell:SetText(t); cell:SetTextColor(cr, cg, cb); cell:Show()
         end
 
         for i = #people + 1, #r.cells do r.cells[i]:Hide() end
@@ -3950,6 +4045,7 @@ local function HideMenus(from) for l = from or 1, #S.menus do S.menus[l]:Hide() 
 
 S.HideMenus = HideMenus
 
+-- One level of the right-click menu, made when first needed
 local function MenuFrame(level)
     local m = S.menus[level]
 
@@ -3971,7 +4067,7 @@ local function MenuFrame(level)
         m:SetScript("OnEvent", function(self)
             if not self:IsShown() then return end
 
-            for _, f in ipairs(S.menus) do if f:IsShown() and f:IsMouseOver() then return end end
+            for _, menu in ipairs(S.menus) do if menu:IsShown() and menu:IsMouseOver() then return end end
 
             HideMenus(1)
         end)
@@ -3982,6 +4078,7 @@ local function MenuFrame(level)
     return m
 end
 
+-- Shows a right-click menu (our own; the game's dropdown menus don't exist here)
 function S.ShowMenu(items, anchor, level)
     level = level or 1
 
@@ -3990,47 +4087,47 @@ function S.ShowMenu(items, anchor, level)
     local m = MenuFrame(level)
     local w = 110
 
-    for i, it in ipairs(items) do
-        local r = m.rows[i]
+    for i, item in ipairs(items) do
+        local row = m.rows[i]
 
-        if not r then
-            r = CreateFrame("Button", nil, m); r:SetHeight(18)
-            r.hl = r:CreateTexture(nil, "HIGHLIGHT"); r.hl:SetAllPoints(); r.hl:SetColorTexture(S.AR, S.AG, S.AB, .18)
-            r.text = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.text:SetPoint("LEFT", 10, 0); r.text:SetJustifyH("LEFT")
-            r.arrow = r:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); r.arrow:SetPoint("RIGHT", -8, 0); r.arrow:SetText(">"); r.arrow:SetTextColor(.56, .6, .7)
-            r.check = r:CreateTexture(nil, "ARTWORK"); r.check:SetSize(14, 14); r.check:SetPoint("RIGHT", -6, 0); r.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-            m.rows[i] = r
+        if not row then
+            row = CreateFrame("Button", nil, m); row:SetHeight(18)
+            row.hl = row:CreateTexture(nil, "HIGHLIGHT"); row.hl:SetAllPoints(); row.hl:SetColorTexture(S.AR, S.AG, S.AB, .18)
+            row.text = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.text:SetPoint("LEFT", 10, 0); row.text:SetJustifyH("LEFT")
+            row.arrow = row:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); row.arrow:SetPoint("RIGHT", -8, 0); row.arrow:SetText(">"); row.arrow:SetTextColor(.56, .6, .7)
+            row.check = row:CreateTexture(nil, "ARTWORK"); row.check:SetSize(14, 14); row.check:SetPoint("RIGHT", -6, 0); row.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+            m.rows[i] = row
         end
 
         local pad = S.WowSkin() and 7 or 4
 
-        r:ClearAllPoints(); r:SetPoint("TOPLEFT", pad, -pad - (i - 1) * 18); r:SetPoint("RIGHT", m, "RIGHT", -pad, 0)
-        r.text:SetText(it.text or "")
+        row:ClearAllPoints(); row:SetPoint("TOPLEFT", pad, -pad - (i - 1) * 18); row:SetPoint("RIGHT", m, "RIGHT", -pad, 0)
+        row.text:SetText(item.text or "")
 
-        if it.isTitle then r.text:SetTextColor(S.AR, S.AG, S.AB)
-        elseif it.disabled then r.text:SetTextColor(.42, .46, .55)
-        elseif it.danger then r.text:SetTextColor(1, .61, .57)
-        else r.text:SetTextColor(.9, .92, .97) end
-        r.arrow:SetShown(it.menuList ~= nil)
-        r.check:SetShown(it.checked == true)
+        if item.isTitle then row.text:SetTextColor(S.AR, S.AG, S.AB)
+        elseif item.disabled then row.text:SetTextColor(.42, .46, .55)
+        elseif item.danger then row.text:SetTextColor(1, .61, .57)
+        else row.text:SetTextColor(.9, .92, .97) end
+        row.arrow:SetShown(item.menuList ~= nil)
+        row.check:SetShown(item.checked == true)
 
-        if it.isTitle or it.disabled then r.hl:SetAlpha(0) else r.hl:SetAlpha(1) end
+        if item.isTitle or item.disabled then row.hl:SetAlpha(0) else row.hl:SetAlpha(1) end
 
-        r:SetScript("OnEnter", function(self)
-            if it.menuList and not it.disabled then S.ShowMenu(it.menuList, self, level + 1) else HideMenus(level + 1) end
+        row:SetScript("OnEnter", function(self)
+            if item.menuList and not item.disabled then S.ShowMenu(item.menuList, self, level + 1) else HideMenus(level + 1) end
         end)
 
-        r:SetScript("OnClick", function()
-            if it.isTitle or it.disabled or it.menuList then return end
+        row:SetScript("OnClick", function()
+            if item.isTitle or item.disabled or item.menuList then return end
 
             HideMenus(1)
 
-            if it.func then it.func() end
+            if item.func then item.func() end
         end)
 
-        r:Show()
+        row:Show()
 
-        w = math.max(w, r.text:GetStringWidth() + ((it.menuList or it.checked ~= nil) and 40 or 26))
+        w = math.max(w, row.text:GetStringWidth() + ((item.menuList or item.checked ~= nil) and 40 or 26))
     end
 
     for i = #items + 1, #m.rows do m.rows[i]:Hide() end
@@ -4147,6 +4244,7 @@ function S.UI_Prompt(title, hint, default, okText, onOk)
     fitSave(); save:Show(); save.eb:SetFocus()
 end
 
+-- Asks for a session's new name
 function S.UI_Rename(sess)
     save.eb:Show()
     save.title:SetText("Rename session")
@@ -4165,12 +4263,14 @@ function S.UI_Rename(sess)
     fitSave(); save:Show(); save.eb:SetFocus(); save.eb:HighlightText()
 end
 
+-- Asks before deleting a session
 function S.UI_ConfirmDelete(sess)
     S.UI_Prompt("Delete session?", "\"" .. (sess.name or "session") .. "\" (" .. (sess.imported and ("from " .. (sess.char or "?")) or "yours") .. ", " .. S.Duration(sess) .. ")." .. (S.Opt("noTrash", false) and " This can't be undone." or " Restore on the Sessions page brings it back."), nil, "Delete",
         function() S.DeleteSession(sess); msg("Deleted \"" .. (sess.name or "session") .. "\"."); S.UI_Update() end)
     save.eb:Hide()
 end
 
+-- The right-click menu on a session
 function S.UI_SessionMenu(sess)
     local menu =
     {
@@ -4207,9 +4307,9 @@ function S.UI_SessionMenu(sess)
         { text = "Delete", danger = true, func = function() S.UI_ConfirmDelete(sess) end },
     }
 
-    local tr = SterlingQuestDB.trash and SterlingQuestDB.trash[1]
+    local trail = SterlingQuestDB.trash and SterlingQuestDB.trash[1]
 
-    if tr then menu[#menu + 1] = { text = "Restore \"" .. (tr.name or "session") .. "\"", func = function() S.Restore() end } end
+    if trail then menu[#menu + 1] = { text = "Restore \"" .. (trail.name or "session") .. "\"", func = function() S.Restore() end } end
     if SterlingQuestDB.following == sess.id then menu[2] = { text = "Stop following", notCheckable = true, func = function() S.StopFollowing(); S.UI_Update() end } end
 
     S.ShowMenu(menu, "cursor")
@@ -4233,33 +4333,33 @@ local function BuildBox()
 
     box.field = field
 
-    local eb = CreateFrame("EditBox", nil, sf); eb:SetMultiLine(true); eb:SetAutoFocus(false); eb:SetFontObject(ChatFontSmall); eb:SetMaxLetters(0)
+    local editBox = CreateFrame("EditBox", nil, sf); editBox:SetMultiLine(true); editBox:SetAutoFocus(false); editBox:SetFontObject(ChatFontSmall); editBox:SetMaxLetters(0)
 
-    eb:SetWidth(408); eb:SetTextInsets(4, 4, 4, 4); eb:SetTextColor(S.TR, S.TG, S.TB); eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    editBox:SetWidth(408); editBox:SetTextInsets(4, 4, 4, 4); editBox:SetTextColor(S.TR, S.TG, S.TB); editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
-    if eb.SetBlinkSpeed then eb:SetBlinkSpeed(0.5) end
+    if editBox.SetBlinkSpeed then editBox:SetBlinkSpeed(0.5) end
 
     -- the field lights up while it has focus and shows a placeholder when empty, so there's never any doubt it's active
-    box.placeholder = eb:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); box.placeholder:SetPoint("TOPLEFT", 6, -5); box.placeholder:SetTextColor(.45, .5, .6); box.placeholder:SetText("Ctrl+V to paste here")
+    box.placeholder = editBox:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); box.placeholder:SetPoint("TOPLEFT", 6, -5); box.placeholder:SetTextColor(.45, .5, .6); box.placeholder:SetText("Ctrl+V to paste here")
 
-    eb:SetScript("OnEditFocusGained", function(self) if box.field then box.field:SetBackdropBorderColor(S.AR, S.AG, S.AB, 1); box.field:SetBackdropColor(0, 0, 0, .5) end; if self:GetText() == "" then box.placeholder:SetText("|cff8ab8ff|  |rCtrl+V to paste here") end end)
-    eb:SetScript("OnEditFocusLost", function(self) if box.field then box.field:SetBackdropBorderColor(.3, .35, .48, 1); box.field:SetBackdropColor(0, 0, 0, .35) end; box.placeholder:SetText("Ctrl+V to paste here") end)
+    editBox:SetScript("OnEditFocusGained", function(self) if box.field then box.field:SetBackdropBorderColor(S.AR, S.AG, S.AB, 1); box.field:SetBackdropColor(0, 0, 0, .5) end; if self:GetText() == "" then box.placeholder:SetText("|cff8ab8ff|  |rCtrl+V to paste here") end end)
+    editBox:SetScript("OnEditFocusLost", function(self) if box.field then box.field:SetBackdropBorderColor(.3, .35, .48, 1); box.field:SetBackdropColor(0, 0, 0, .35) end; box.placeholder:SetText("Ctrl+V to paste here") end)
 
-    sf:SetScrollChild(eb); box.eb = eb
+    sf:SetScrollChild(editBox); box.eb = editBox
 
     -- an empty multi-line edit box has no height, so clicks in the empty area would miss it
     sf:EnableMouse(true)
-    sf:SetScript("OnMouseDown", function() eb:SetFocus() end)
-    sf:SetScript("OnSizeChanged", function(self, w, h) eb:SetWidth(w - 4); if eb:GetHeight() < h then eb:SetHeight(h) end end)
-    eb:SetScript("OnTextChanged", function(self) local h = sf:GetHeight(); if self:GetHeight() < h then self:SetHeight(h) end; box.placeholder:SetShown(self:GetText() == "" and box.ok:IsShown()) end)
-    eb:SetHeight(150)
+    sf:SetScript("OnMouseDown", function() editBox:SetFocus() end)
+    sf:SetScript("OnSizeChanged", function(self, w, h) editBox:SetWidth(w - 4); if editBox:GetHeight() < h then editBox:SetHeight(h) end end)
+    editBox:SetScript("OnTextChanged", function(self) local height = sf:GetHeight(); if self:GetHeight() < height then self:SetHeight(height) end; box.placeholder:SetShown(self:GetText() == "" and box.ok:IsShown()) end)
+    editBox:SetHeight(150)
 
     box.hint = box:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); box.hint:SetPoint("TOPLEFT", 14, -38); box.hint:SetWidth(432); box.hint:SetJustifyH("LEFT"); box.hint:SetWordWrap(false); box.hint:SetTextColor(.72, .76, .85)
     box.ok = Button(box, "Import", 80); box.ok:SetPoint("BOTTOMRIGHT", -14, 10)
 
     box.ok:SetScript("OnClick", function() S.ImportString(box.eb:GetText()); box:Hide() end)
 
-    local c = Button(box, "Close", 60); c:SetPoint("RIGHT", box.ok, "LEFT", -4, 0); c:SetScript("OnClick", function() box:Hide() end)
+    local button = Button(box, "Close", 60); button:SetPoint("RIGHT", box.ok, "LEFT", -4, 0); button:SetScript("OnClick", function() box:Hide() end)
 end
 
 -- what: a session id/name, "log" for the quest snapshot, or empty (latest own session, else log)
@@ -4272,7 +4372,7 @@ function S.UI_ShowExport(what)
         local sess = S.FindSession(what)
 
         if not sess and (what == nil or what == "") then
-            for _, s in ipairs(SterlingQuestDB.sessions) do if not s.imported then sess = s break end end
+            for _, session in ipairs(SterlingQuestDB.sessions) do if not session.imported then sess = session break end end
         end
 
         if sess then text, label = S.EncodeSession(sess), "session \"" .. sess.name .. "\""
@@ -4285,6 +4385,7 @@ function S.UI_ShowExport(what)
     box.eb:SetFocus(); box.eb:HighlightText()
 end
 
+-- The Import box
 function S.UI_ShowImport()
     box.title:SetText("Import"); box.hint:SetText("Paste a session (SES1...) or quest-log (STR3...) string, then Import.")
     box.eb:SetText(""); box.ok:Show(); box:Show(); box.placeholder:Show(); box.eb:SetFocus(); box.eb:SetCursorPosition(0)
@@ -4300,25 +4401,26 @@ local function TextField(parent, scrollName, placeholder)
 
     field:SetBackdropColor(0, 0, 0, .35); field:SetBackdropBorderColor(.3, .35, .48, 1); field:SetFrameLevel(math.max(0, sf:GetFrameLevel() - 1))
 
-    local eb = CreateFrame("EditBox", nil, sf); eb:SetMultiLine(true); eb:SetAutoFocus(false); eb:SetFontObject(ChatFontSmall); eb:SetMaxLetters(0)
+    local editBox = CreateFrame("EditBox", nil, sf); editBox:SetMultiLine(true); editBox:SetAutoFocus(false); editBox:SetFontObject(ChatFontSmall); editBox:SetMaxLetters(0)
 
-    eb:SetWidth(380); eb:SetTextInsets(4, 4, 4, 4); eb:SetTextColor(S.TR, S.TG, S.TB); eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    sf:SetScrollChild(eb)
+    editBox:SetWidth(380); editBox:SetTextInsets(4, 4, 4, 4); editBox:SetTextColor(S.TR, S.TG, S.TB); editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    sf:SetScrollChild(editBox)
 
-    local ph = eb:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); ph:SetPoint("TOPLEFT", 6, -5); ph:SetTextColor(.45, .5, .6); ph:SetText(placeholder or "")
+    local ph = editBox:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); ph:SetPoint("TOPLEFT", 6, -5); ph:SetTextColor(.45, .5, .6); ph:SetText(placeholder or "")
 
-    eb:SetScript("OnEditFocusGained", function() field:SetBackdropBorderColor(S.AR, S.AG, S.AB, 1); field:SetBackdropColor(0, 0, 0, .5) end)
-    eb:SetScript("OnEditFocusLost", function() field:SetBackdropBorderColor(.3, .35, .48, 1); field:SetBackdropColor(0, 0, 0, .35) end)
+    editBox:SetScript("OnEditFocusGained", function() field:SetBackdropBorderColor(S.AR, S.AG, S.AB, 1); field:SetBackdropColor(0, 0, 0, .5) end)
+    editBox:SetScript("OnEditFocusLost", function() field:SetBackdropBorderColor(.3, .35, .48, 1); field:SetBackdropColor(0, 0, 0, .35) end)
 
     -- an empty multi-line edit box has no height, so clicks in the empty area would miss it
     sf:EnableMouse(true)
-    sf:SetScript("OnMouseDown", function() eb:SetFocus() end)
-    sf:SetScript("OnSizeChanged", function(self, w, h) eb:SetWidth(w - 4); if eb:GetHeight() < h then eb:SetHeight(h) end end)
-    eb:SetHeight(72)
+    sf:SetScript("OnMouseDown", function() editBox:SetFocus() end)
+    sf:SetScript("OnSizeChanged", function(self, w, h) editBox:SetWidth(w - 4); if editBox:GetHeight() < h then editBox:SetHeight(h) end end)
+    editBox:SetHeight(72)
 
-    return { sf = sf, eb = eb, field = field, placeholder = ph }
+    return { sf = sf, eb = editBox, field = field, placeholder = ph }
 end
 
+-- The line saying what an offline string will hold
 local function offlineStatus(f)
     local name = f.who
 
@@ -4340,6 +4442,7 @@ local function offlineStatus(f)
     end
 end
 
+-- Shows one part of a long offline string to copy
 local function offlineShowPart(f)
     local parts = f.parts
 
@@ -4362,6 +4465,7 @@ local function offlineShowPart(f)
     f.copy:SetEnabled(true)
 end
 
+-- Makes the offline string for a partner
 local function offlineMake(f, forceFull)
     if not f.who then return end
 
@@ -4376,6 +4480,7 @@ local function offlineMake(f, forceFull)
     f.result:SetText("|cff8a93a8Ctrl+C to copy" .. (#parts > 1 and (" this part; it comes in " .. #parts .. " parts so each fits a Discord message. Send them all.") or ", then send it to " .. S.PartnerLabel(f.who) .. " any way you like.") .. "|r")
 end
 
+-- Reads a pasted offline string and asks before using it when needed
 local function offlineImport(f)
     local text = f.inn.eb:GetText() or ""
     local packed, got, need = S.OfflineCollect(text)
@@ -4392,13 +4497,14 @@ local function offlineImport(f)
 
     local verdict, why = S.OfflineCheck(d)
 
+    -- Uses the string once it's accepted
     local function apply()
         local ok, line = S.OfflineApply(d, verdict)
 
         if ok then
             f.result:SetText("|cff7ee2a2" .. S.Mark("good") .. line .. "|r"); f.inn.eb:SetText(""); f.inn.placeholder:Show()
 
-            local p = S.FindPartner(d.from); if p then f.who = p.name; f.title:SetText("Offline sync: " .. S.PartnerLabel(p.name)); f.pick:Refresh() end
+            local partner = S.FindPartner(d.from); if partner then f.who = partner.name; f.title:SetText("Offline sync: " .. S.PartnerLabel(partner.name)); f.pick:Refresh() end
 
             msg(line)
         else f.result:SetText("|cffff9b92" .. S.Mark("bad") .. tostring(line) .. "|r") end
@@ -4417,19 +4523,19 @@ function S.UI_Offline(name, text)
     if not offWin then
         offWin = Window("SterlingQuestOffline", 460, 430, "Offline sync")
 
-        local f = offWin
+        local frame = offWin
 
-        f:SetFrameStrata("DIALOG")
+        frame:SetFrameStrata("DIALOG")
 
-        f.hint = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.hint:SetPoint("TOPLEFT", 14, -38); f.hint:SetJustifyH("LEFT"); f.hint:SetTextColor(.72, .76, .85); f.hint:SetWordWrap(false)
+        frame.hint = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.hint:SetPoint("TOPLEFT", 14, -38); frame.hint:SetJustifyH("LEFT"); frame.hint:SetTextColor(.72, .76, .85); frame.hint:SetWordWrap(false)
 
-        f.hint:SetText("Sync without being online together: send your string, paste theirs.")
+        frame.hint:SetText("Sync without being online together: send your string, paste theirs.")
 
-        f.pick = Dropdown(f, 130, function() return f.who and S.PartnerLabel(f.who) or "pick a partner" end, function()
+        frame.pick = Dropdown(frame, 130, function() return frame.who and S.PartnerLabel(frame.who) or "pick a partner" end, function()
             local items = {}
 
-            for _, p in ipairs(S.Partners()) do
-                items[#items + 1] = { text = S.PartnerLabel(p.name), checked = f.who == p.name, func = function() S.UI_Offline(p.name) end }
+            for _, partner in ipairs(S.Partners()) do
+                items[#items + 1] = { text = S.PartnerLabel(partner.name), checked = frame.who == partner.name, func = function() S.UI_Offline(partner.name) end }
             end
 
             if #items == 0 then items[1] = { text = "No partners yet", disabled = true } end
@@ -4437,80 +4543,80 @@ function S.UI_Offline(name, text)
             return items
         end)
 
-        f.pick:SetPoint("TOPRIGHT", -14, -34)
-        f.hint:SetPoint("RIGHT", f.pick, "LEFT", -8, 0)
+        frame.pick:SetPoint("TOPRIGHT", -14, -34)
+        frame.hint:SetPoint("RIGHT", frame.pick, "LEFT", -8, 0)
 
-        f.keyLine = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.keyLine:SetPoint("TOPLEFT", 14, -62); f.keyLine:SetPoint("RIGHT", -14, 0); f.keyLine:SetJustifyH("LEFT"); f.keyLine:SetHeight(24); f.keyLine:SetJustifyV("TOP")
+        frame.keyLine = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.keyLine:SetPoint("TOPLEFT", 14, -62); frame.keyLine:SetPoint("RIGHT", -14, 0); frame.keyLine:SetJustifyH("LEFT"); frame.keyLine:SetHeight(24); frame.keyLine:SetJustifyV("TOP")
 
         -- your string
-        f.outHead = f:CreateFontString(nil, "OVERLAY", "GameFontNormal"); f.outHead:SetPoint("TOPLEFT", 14, -94); f.outHead:SetText("Your string"); f.outHead:SetTextColor(S.LabelColor())
-        f.outInfo = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.outInfo:SetPoint("TOPLEFT", f.outHead, "TOPRIGHT", 10, -1); f.outInfo:SetPoint("RIGHT", -14, 0); f.outInfo:SetJustifyH("RIGHT"); f.outInfo:SetTextColor(.56, .6, .7); f.outInfo:SetWordWrap(false)
-        f.out = TextField(f, "SterlingQuestOfflineOut", "Press Make string")
+        frame.outHead = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"); frame.outHead:SetPoint("TOPLEFT", 14, -94); frame.outHead:SetText("Your string"); frame.outHead:SetTextColor(S.LabelColor())
+        frame.outInfo = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.outInfo:SetPoint("TOPLEFT", frame.outHead, "TOPRIGHT", 10, -1); frame.outInfo:SetPoint("RIGHT", -14, 0); frame.outInfo:SetJustifyH("RIGHT"); frame.outInfo:SetTextColor(.56, .6, .7); frame.outInfo:SetWordWrap(false)
+        frame.out = TextField(frame, "SterlingQuestOfflineOut", "Press Make string")
 
-        f.out.sf:SetPoint("TOPLEFT", 18, -116); f.out.sf:SetPoint("TOPRIGHT", -36, -116); f.out.sf:SetHeight(72)
+        frame.out.sf:SetPoint("TOPLEFT", 18, -116); frame.out.sf:SetPoint("TOPRIGHT", -36, -116); frame.out.sf:SetHeight(72)
 
-        f.make = Button(f, "Make string", 96); f.make:SetPoint("TOPLEFT", 14, -198)
+        frame.make = Button(frame, "Make string", 96); frame.make:SetPoint("TOPLEFT", 14, -198)
 
-        f.make:SetScript("OnClick", function() offlineMake(f, false) end)
-        f.make:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Make string"); GameTooltip:AddLine("Everything that changed since the last copy your partner confirmed. If they hold nothing yet, or you haven't swapped keys, it is a full copy.", 1, 1, 1, true); GameTooltip:Show() end)
-        f.make:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        frame.make:SetScript("OnClick", function() offlineMake(frame, false) end)
+        frame.make:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Make string"); GameTooltip:AddLine("Everything that changed since the last copy your partner confirmed. If they hold nothing yet, or you haven't swapped keys, it is a full copy.", 1, 1, 1, true); GameTooltip:Show() end)
+        frame.make:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        f.full = Button(f, "Full copy", 80); f.full:SetPoint("LEFT", f.make, "RIGHT", 4, 0)
+        frame.full = Button(frame, "Full copy", 80); frame.full:SetPoint("LEFT", frame.make, "RIGHT", 4, 0)
 
-        f.full:SetScript("OnClick", function() offlineMake(f, true) end)
-        f.full:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Full copy"); GameTooltip:AddLine("Your whole quest log and history, whatever they hold. Use it when their side says a string doesn't continue from the update they have.", 1, 1, 1, true); GameTooltip:Show() end)
-        f.full:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        frame.full:SetScript("OnClick", function() offlineMake(frame, true) end)
+        frame.full:SetScript("OnEnter", function(self) GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Full copy"); GameTooltip:AddLine("Your whole quest log and history, whatever they hold. Use it when their side says a string doesn't continue from the update they have.", 1, 1, 1, true); GameTooltip:Show() end)
+        frame.full:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        f.copy = Button(f, "Select all", 80); f.copy:SetPoint("LEFT", f.full, "RIGHT", 4, 0)
+        frame.copy = Button(frame, "Select all", 80); frame.copy:SetPoint("LEFT", frame.full, "RIGHT", 4, 0)
 
-        f.copy:SetScript("OnClick", function() f.out.eb:SetFocus(); f.out.eb:HighlightText() end)
+        frame.copy:SetScript("OnClick", function() frame.out.eb:SetFocus(); frame.out.eb:HighlightText() end)
 
-        f.nextBtn = Button(f, "Next part", 80); f.nextBtn:SetPoint("TOPRIGHT", -14, -198)
+        frame.nextBtn = Button(frame, "Next part", 80); frame.nextBtn:SetPoint("TOPRIGHT", -14, -198)
 
-        f.nextBtn:SetScript("OnClick", function() if f.parts then f.part = (f.part or 1) % #f.parts + 1; offlineShowPart(f); f.out.eb:SetFocus(); f.out.eb:HighlightText() end end)
+        frame.nextBtn:SetScript("OnClick", function() if frame.parts then frame.part = (frame.part or 1) % #frame.parts + 1; offlineShowPart(frame); frame.out.eb:SetFocus(); frame.out.eb:HighlightText() end end)
 
         -- their string
-        f.inHead = f:CreateFontString(nil, "OVERLAY", "GameFontNormal"); f.inHead:SetPoint("TOPLEFT", 14, -234); f.inHead:SetText("Their string"); f.inHead:SetTextColor(S.LabelColor())
-        f.inn = TextField(f, "SterlingQuestOfflineIn", "Ctrl+V to paste here. Several parts can go in one after another.")
+        frame.inHead = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"); frame.inHead:SetPoint("TOPLEFT", 14, -234); frame.inHead:SetText("Their string"); frame.inHead:SetTextColor(S.LabelColor())
+        frame.inn = TextField(frame, "SterlingQuestOfflineIn", "Ctrl+V to paste here. Several parts can go in one after another.")
 
-        f.inn.sf:SetPoint("TOPLEFT", 18, -256); f.inn.sf:SetPoint("TOPRIGHT", -36, -256); f.inn.sf:SetHeight(72)
-        f.inn.eb:SetScript("OnTextChanged", function(self) f.inn.placeholder:SetShown(self:GetText() == "") end)
+        frame.inn.sf:SetPoint("TOPLEFT", 18, -256); frame.inn.sf:SetPoint("TOPRIGHT", -36, -256); frame.inn.sf:SetHeight(72)
+        frame.inn.eb:SetScript("OnTextChanged", function(self) frame.inn.placeholder:SetShown(self:GetText() == "") end)
 
-        f.result = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.result:SetPoint("TOPLEFT", 14, -338); f.result:SetPoint("RIGHT", -14, 0); f.result:SetJustifyH("LEFT"); f.result:SetJustifyV("TOP"); f.result:SetHeight(48)
-        f.imp = Button(f, "Import", 80); f.imp:SetPoint("BOTTOMRIGHT", -14, 10)
+        frame.result = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.result:SetPoint("TOPLEFT", 14, -338); frame.result:SetPoint("RIGHT", -14, 0); frame.result:SetJustifyH("LEFT"); frame.result:SetJustifyV("TOP"); frame.result:SetHeight(48)
+        frame.imp = Button(frame, "Import", 80); frame.imp:SetPoint("BOTTOMRIGHT", -14, 10)
 
-        f.imp:SetScript("OnClick", function() offlineImport(f) end)
+        frame.imp:SetScript("OnClick", function() offlineImport(frame) end)
 
-        f.clr = Button(f, "Clear", 60); f.clr:SetPoint("RIGHT", f.imp, "LEFT", -4, 0)
+        frame.clr = Button(frame, "Clear", 60); frame.clr:SetPoint("RIGHT", frame.imp, "LEFT", -4, 0)
 
-        f.clr:SetScript("OnClick", function() f.inn.eb:SetText(""); f.inn.placeholder:Show(); f.result:SetText("") end)
+        frame.clr:SetScript("OnClick", function() frame.inn.eb:SetText(""); frame.inn.placeholder:Show(); frame.result:SetText("") end)
 
-        f.help = Button(f, "How it works", 100); f.help:SetPoint("BOTTOMLEFT", 14, 10)
+        frame.help = Button(frame, "How it works", 100); frame.help:SetPoint("BOTTOMLEFT", 14, 10)
 
-        f.help:SetScript("OnClick", function() if S.UI_Help then S.UI_Help("offline") end end)
-        f:SetScale(S.Opt("scale", 1))
+        frame.help:SetScript("OnClick", function() if S.UI_Help then S.UI_Help("offline") end end)
+        frame:SetScale(S.Opt("scale", 1))
     end
 
-    local f = offWin
+    local frame = offWin
 
-    if name then local p = S.FindPartner(name); name = p and p.name or nil end
-    if name ~= f.who or not f.shownOnce then f.parts, f.info, f.part = nil, nil, nil end
+    if name then local partner = S.FindPartner(name); name = partner and partner.name or nil end
+    if name ~= frame.who or not frame.shownOnce then frame.parts, frame.info, frame.part = nil, nil, nil end
 
-    f.shownOnce = true
-    f.who = name or f.who
+    frame.shownOnce = true
+    frame.who = name or frame.who
 
-    if f.who and not S.FindPartner(f.who) then f.who = nil end
+    if frame.who and not S.FindPartner(frame.who) then frame.who = nil end
 
-    f.title:SetText(f.who and ("Offline sync: " .. S.PartnerLabel(f.who)) or "Offline sync")
-    f.pick:Refresh()
-    f.result:SetText("")
-    offlineStatus(f); offlineShowPart(f)
+    frame.title:SetText(frame.who and ("Offline sync: " .. S.PartnerLabel(frame.who)) or "Offline sync")
+    frame.pick:Refresh()
+    frame.result:SetText("")
+    offlineStatus(frame); offlineShowPart(frame)
 
-    if text and text ~= "" then f.inn.eb:SetText(text); f.inn.placeholder:Hide() end
+    if text and text ~= "" then frame.inn.eb:SetText(text); frame.inn.placeholder:Hide() end
 
-    f:Show()
+    frame:Show()
 
-    if text and text ~= "" then offlineImport(f) end
+    if text and text ~= "" then offlineImport(frame) end
 end
 
 ---------------------------------------------------------------------------
@@ -4518,6 +4624,7 @@ end
 ---------------------------------------------------------------------------
 local mm
 
+-- The minimap button
 local function BuildMinimap()
     mm = CreateFrame("Button", "SterlingQuestMinimapButton", Minimap)
 
@@ -4543,6 +4650,7 @@ local function BuildMinimap()
         ["TRICORNER-BOTTOMLEFT"] = { true, true, false, true }, ["TRICORNER-BOTTOMRIGHT"] = { true, true, true, false },
     }
 
+    -- Places the button around the minimap (round or square)
     local function place()
         local a = math.rad(SterlingQuestDB.minimapAngle or 200)
         local x, y = math.cos(a), math.sin(a)
@@ -4556,14 +4664,14 @@ local function BuildMinimap()
         if type(GetMinimapShape) == "function" then local ok, v = pcall(GetMinimapShape); if ok and type(v) == "string" then shape = v end end
 
         local quads = SHAPES[shape] or SHAPES.ROUND
-        local w = (Minimap:GetWidth() or 140) / 2 + 10
-        local h = (Minimap:GetHeight() or 140) / 2 + 10
+        local width = (Minimap:GetWidth() or 140) / 2 + 10
+        local height = (Minimap:GetHeight() or 140) / 2 + 10
 
-        if quads[q] then x, y = x * w, y * h
+        if quads[q] then x, y = x * width, y * height
         else
-            local dw, dh = math.sqrt(2 * w * w) - 10, math.sqrt(2 * h * h) - 10
+            local dw, dh = math.sqrt(2 * width * width) - 10, math.sqrt(2 * height * height) - 10
 
-            x = math.max(-w, math.min(x * dw, w)); y = math.max(-h, math.min(y * dh, h))
+            x = math.max(-width, math.min(x * dw, width)); y = math.max(-height, math.min(y * dh, height))
         end
 
         mm:ClearAllPoints(); mm:SetPoint("CENTER", Minimap, "CENTER", x, y)
@@ -4574,9 +4682,9 @@ local function BuildMinimap()
     -- a square map addon may load after us or resize the map: place again then
     Minimap:HookScript("OnSizeChanged", function() pcall(place) end)
 
-    local ev = CreateFrame("Frame"); ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+    local frame = CreateFrame("Frame"); frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
-    ev:SetScript("OnEvent", function() C_Timer.After(1, function() pcall(place) end) end)
+    frame:SetScript("OnEvent", function() C_Timer.After(1, function() pcall(place) end) end)
     mm:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", function()
         local mx, my = Minimap:GetCenter(); local cx, cy = GetCursorPosition(); local s = UIParent:GetEffectiveScale()
 
@@ -4596,9 +4704,9 @@ local function BuildMinimap()
 
         if rec then GameTooltip:AddLine("|cffff6060Recording|r " .. S.Duration(rec) .. ", " .. #rec.events .. " events") end
 
-        local st = S.steps[S.CurrentIndex()]
+        local step = S.steps[S.CurrentIndex()]
 
-        if st then GameTooltip:AddLine("Next: " .. S.StepLabel(st), .8, .83, .9, true) end
+        if step then GameTooltip:AddLine("Next: " .. S.StepLabel(step), .8, .83, .9, true) end
 
         local d = S.TrailDistance()
 
@@ -4615,6 +4723,7 @@ local function BuildMinimap()
     if SterlingQuestDB.hideMinimap then mm:Hide() end
 end
 
+-- Shows the red dot on the minimap button while recording
 function S.UI_MinimapState()
     if not mm then return end
     if S.IsRecording() then mm.dot:Show() else mm.dot:Hide() end
@@ -4627,6 +4736,7 @@ BINDING_NAME_STERLINGQUEST_DONE = "Mark current step done"
 BINDING_NAME_STERLINGQUEST_MAP = "Toggle map playback"
 BINDING_NAME_STERLINGQUEST_WINDOW = "Toggle window"
 
+-- The key bindings
 function SterlingQuest_Bind(what)
     if what == "record" then if S.IsRecording() then S.RecordStop() else S.RecordStart() end
     elseif what == "done" then SterlingQuestDB.manual[S.CurrentIndex()] = true; S.Recalc(false)
@@ -4634,6 +4744,7 @@ function SterlingQuest_Bind(what)
     elseif what == "window" then S.UI_Toggle() end
 end
 
+-- Builds every window at login
 function S.UI_Init()
     BuildMain(); BuildSave(); BuildBox(); BuildMinimap()
     S.UI_Tab(current)
@@ -4650,11 +4761,11 @@ function S.UI_ApplyLook()
     local wasShown = main and main:IsShown()
     local optOpen, optTab = optWin and optWin:IsShown(), pages.options and pages.options.tab
 
-    for _, w in ipairs(S.windows or {}) do pcall(w.Hide, w) end
+    for _, window in ipairs(S.windows or {}) do pcall(window.Hide, window) end
 
     if S.HideMenus then S.HideMenus(1) end
 
-    for _, m in ipairs(S.menus or {}) do pcall(m.Hide, m) end
+    for _, menu in ipairs(S.menus or {}) do pcall(menu.Hide, menu) end
 
     S.windows, S.menus = {}, {}
     main, tabs, pages, builders = nil, {}, {}, {}

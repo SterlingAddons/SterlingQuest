@@ -49,34 +49,36 @@ end
 
 S.DrawLine, S.PinColors, S.LINE_TEX = DrawLine, pinColors, LINE_TEX
 
+-- The next free line on the world map overlay
 local function getLine()
     lineN = lineN + 1
 
-    local t = lines[lineN]
+    local line = lines[lineN]
 
-    if not t then t = overlay:CreateTexture(nil, "ARTWORK"); t:SetTexture(LINE_TEX); lines[lineN] = t end
+    if not line then line = overlay:CreateTexture(nil, "ARTWORK"); line:SetTexture(LINE_TEX); lines[lineN] = line end
 
-    return t
+    return line
 end
 
+-- The next free pin on the world map overlay
 local function getPin()
     pinN = pinN + 1
 
-    local p = pins[pinN]
+    local pin = pins[pinN]
 
-    if not p then
-        p = CreateFrame("Frame", nil, overlay)
+    if not pin then
+        pin = CreateFrame("Frame", nil, overlay)
 
-        p:SetSize(18, 18); p:SetFrameLevel(overlay:GetFrameLevel() + 5)
+        pin:SetSize(18, 18); pin:SetFrameLevel(overlay:GetFrameLevel() + 5)
 
         -- Solid color textures only: this client doesn't ship the old minimap BLP files.
-        p.ring = p:CreateTexture(nil, "BACKGROUND"); p.ring:SetPoint("TOPLEFT", -2, 2); p.ring:SetPoint("BOTTOMRIGHT", 2, -2); p.ring:SetColorTexture(0, 0, 0, .85)
-        p.bg = p:CreateTexture(nil, "BORDER"); p.bg:SetAllPoints(); p.bg:SetColorTexture(1, 1, 1, 1)
-        p.num = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); p.num:SetPoint("CENTER", 0, 0); p.num:SetTextColor(S.TR, S.TG, S.TB)
+        pin.ring = pin:CreateTexture(nil, "BACKGROUND"); pin.ring:SetPoint("TOPLEFT", -2, 2); pin.ring:SetPoint("BOTTOMRIGHT", 2, -2); pin.ring:SetColorTexture(0, 0, 0, .85)
+        pin.bg = pin:CreateTexture(nil, "BORDER"); pin.bg:SetAllPoints(); pin.bg:SetColorTexture(1, 1, 1, 1)
+        pin.num = pin:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); pin.num:SetPoint("CENTER", 0, 0); pin.num:SetTextColor(S.TR, S.TG, S.TB)
 
-        p.num:SetShadowColor(0, 0, 0, 1); p.num:SetShadowOffset(1, -1)
-        p:EnableMouse(true)
-        p:SetScript("OnEnter", function(self)
+        pin.num:SetShadowColor(0, 0, 0, 1); pin.num:SetShadowOffset(1, -1)
+        pin:EnableMouse(true)
+        pin:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(self.title or "")
 
             if self.sub then GameTooltip:AddLine(self.sub, .8, .83, .9, true) end
@@ -84,52 +86,54 @@ local function getPin()
             GameTooltip:Show()
         end)
 
-        p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-        pins[pinN] = p
+        pins[pinN] = pin
     end
 
-    return p
+    return pin
 end
 
-local function pinLabel(e)
-    if e.quest and e.quest:find("^Quest #") and e.q and S.QuestName then
-        local n = S.QuestName(tonumber(e.q)); if n and not n:find("^Quest #") then e.quest = n end
+-- The text on a pin, with a better quest name if one is known now
+local function pinLabel(event)
+    if event.quest and event.quest:find("^Quest #") and event.q and S.QuestName then
+        local n = S.QuestName(tonumber(event.q)); if n and not n:find("^Quest #") then event.quest = n end
     end
 
-    if e.k == "T" then return "Turned in " .. (e.quest or ""), e.npc
-    elseif e.k == "A" then return "Picked up " .. (e.quest or ""), e.npc
-    elseif e.k == "O" then return (e.text and e.text:find("%S")) and e.text or "Objective", e.quest
-    elseif e.k == "Z" then return "Arrived: " .. (e.text or "")
-    elseif e.k == "F" then return "Flew to " .. (e.text or ""), e.from and ("from " .. e.from)
-    elseif e.k == "B" then return "Boat or zeppelin to " .. (e.text or ""), e.from and ("from " .. e.from)
-    elseif e.k == "H" then return ((e.from == "Hearthstone" or not e.from) and "Hearthed to " or "Teleported to ") .. (e.text or ""), (e.from ~= "Hearthstone") and e.from or nil
-    elseif e.k == "D" then return "Ran " .. (e.text or "dungeon"), e.dur and (math.floor(e.dur / 60) .. " min")
-    elseif e.k == "L" then return "Level " .. (e.lvl or "")
-    elseif e.k == "K" then return "Died here", e.text == "res sickness" and "took res sickness at the spirit healer" or nil
-    elseif e.k == "N" then return "Note: " .. (e.text or "") end
-    return e.k
+    if event.k == "T" then return "Turned in " .. (event.quest or ""), event.npc
+    elseif event.k == "A" then return "Picked up " .. (event.quest or ""), event.npc
+    elseif event.k == "O" then return (event.text and event.text:find("%S")) and event.text or "Objective", event.quest
+    elseif event.k == "Z" then return "Arrived: " .. (event.text or "")
+    elseif event.k == "F" then return "Flew to " .. (event.text or ""), event.from and ("from " .. event.from)
+    elseif event.k == "B" then return "Boat or zeppelin to " .. (event.text or ""), event.from and ("from " .. event.from)
+    elseif event.k == "H" then return ((event.from == "Hearthstone" or not event.from) and "Hearthed to " or "Teleported to ") .. (event.text or ""), (event.from ~= "Hearthstone") and event.from or nil
+    elseif event.k == "D" then return "Ran " .. (event.text or "dungeon"), event.dur and (math.floor(event.dur / 60) .. " min")
+    elseif event.k == "L" then return "Level " .. (event.lvl or "")
+    elseif event.k == "K" then return "Died here", event.text == "res sickness" and "took res sickness at the spirit healer" or nil
+    elseif event.k == "N" then return "Note: " .. (event.text or "") end
+    return event.k
 end
 
 -- Position on the trail at time t (interpolated), for the current map.
 S.PinLabel = pinLabel
 
+-- Where the trail was at a time, on a map (for playback)
 local function trailPosAt(t, map)
-    local tr = session and session.trail or {}
+    local trail = session and session.trail or {}
     local prev
 
-    for _, p in ipairs(tr) do
-        if p.t > t then
-            if prev and prev.map == map and p.map == map and not p.brk then
-                local f = (t - prev.t) / math.max(1, p.t - prev.t)
+    for _, point in ipairs(trail) do
+        if point.t > t then
+            if prev and prev.map == map and point.map == map and not point.brk then
+                local f = (t - prev.t) / math.max(1, point.t - prev.t)
 
-                return prev.x + (p.x - prev.x) * f, prev.y + (p.y - prev.y) * f
+                return prev.x + (point.x - prev.x) * f, prev.y + (point.y - prev.y) * f
             end
 
             return prev and prev.map == map and prev.x or nil, prev and prev.map == map and prev.y or nil
         end
 
-        prev = p
+        prev = point
     end
 
     if prev and prev.map == map then return prev.x, prev.y end
@@ -141,28 +145,31 @@ local function sessionMapAt(t)
 
     local m
 
-    for _, p in ipairs(session.trail) do if p.t <= t then m = p.map else break end end
+    for _, point in ipairs(session.trail) do if point.t <= t then m = point.map else break end end
 
     return m or (session.trail[1] and session.trail[1].map)
 end
 
+-- Switches the world map to a map
 local function showMap(map)
     if map and WorldMapFrame and WorldMapFrame.SetMapID and WorldMapFrame:GetMapID() ~= map then pcall(WorldMapFrame.SetMapID, WorldMapFrame, map) end
 end
 
+-- The map the world map is showing
 local function currentMapID()
     if WorldMapFrame and WorldMapFrame.GetMapID then return WorldMapFrame:GetMapID() end
 end
 
 local redrawQueued = false
 
+-- Draws the session's trail and pins on the world map
 local function realRedraw()
     if not overlay then return end
 
     lineN, pinN = 0, 0
 
-    for _, t in ipairs(lines) do t:Hide() end
-    for _, p in ipairs(pins) do p:Hide() end
+    for _, line in ipairs(lines) do line:Hide() end
+    for _, pin in ipairs(pins) do pin:Hide() end
 
     if marker then marker:Hide() end
     if not (session and WorldMapFrame and WorldMapFrame:IsShown()) then if bar then bar:Hide() end return end
@@ -180,14 +187,14 @@ local function realRedraw()
 
         local prev
 
-        for _, p in ipairs(session.trail) do
-            if p.map == map and prev and prev.map == map and not p.brk then
+        for _, point in ipairs(session.trail) do
+            if point.map == map and prev and prev.map == map and not point.brk then
                 local tex = getLine(); tex:SetVertexColor(.23, .48, 1, .45)
 
-                DrawLine(tex, overlay, prev.x / 100 * W, H - prev.y / 100 * H, p.x / 100 * W, H - p.y / 100 * H, 3)
+                DrawLine(tex, overlay, prev.x / 100 * W, H - prev.y / 100 * H, point.x / 100 * W, H - point.y / 100 * H, 3)
             end
 
-            prev = p
+            prev = point
         end
 
         return
@@ -196,37 +203,37 @@ local function realRedraw()
     -- Trail
     local prev
 
-    for _, p in ipairs(session.trail) do
-        if p.map == map and prev and prev.map == map and not p.brk then
+    for _, point in ipairs(session.trail) do
+        if point.map == map and prev and prev.map == map and not point.brk then
             local tex = getLine()
-            local past = p.t <= now
+            local past = point.t <= now
 
             tex:SetVertexColor(.23, .48, 1, past and .95 or .35)
-            DrawLine(tex, overlay, prev.x / 100 * W, H - prev.y / 100 * H, p.x / 100 * W, H - p.y / 100 * H, past and 4 or 3)
+            DrawLine(tex, overlay, prev.x / 100 * W, H - prev.y / 100 * H, point.x / 100 * W, H - point.y / 100 * H, past and 4 or 3)
         end
 
-        prev = p
+        prev = point
     end
 
     -- Pins (quest events and arrivals), numbered in order
     local n = 0
 
-    for _, e in ipairs(session.events) do
-        if e.map == map and e.x and (e.k == "T" or e.k == "A" or e.k == "O" or e.k == "F" or e.k == "B" or e.k == "H" or e.k == "D" or e.k == "K" or e.k == "N") then
+    for _, event in ipairs(session.events) do
+        if event.map == map and event.x and (event.k == "T" or event.k == "A" or event.k == "O" or event.k == "F" or event.k == "B" or event.k == "H" or event.k == "D" or event.k == "K" or event.k == "N") then
             n = n + 1
 
-            local p = getPin()
-            local c = pinColors[e.k] or { .5, .5, .5 }
+            local pin = getPin()
+            local c = pinColors[event.k] or { .5, .5, .5 }
 
-            p.bg:SetVertexColor(c[1], c[2], c[3], 1)
-            p.num:SetText(n)
+            pin.bg:SetVertexColor(c[1], c[2], c[3], 1)
+            pin.num:SetText(n)
 
-            p.title, p.sub = pinLabel(e)
-            p.sub = (p.sub and (p.sub .. "  ") or "") .. S.Clock(e.t)
+            pin.title, pin.sub = pinLabel(event)
+            pin.sub = (pin.sub and (pin.sub .. "  ") or "") .. S.Clock(event.t)
 
-            p:ClearAllPoints(); p:SetPoint("CENTER", overlay, "TOPLEFT", e.x / 100 * W, -e.y / 100 * H)
-            p:SetAlpha(e.t <= now and 1 or .45)
-            p:Show()
+            pin:ClearAllPoints(); pin:SetPoint("CENTER", overlay, "TOPLEFT", event.x / 100 * W, -event.y / 100 * H)
+            pin:SetAlpha(event.t <= now and 1 or .45)
+            pin:Show()
         end
     end
 
@@ -280,6 +287,7 @@ local function realRedraw()
     end
 end
 
+-- Redraws the world map overlay on the next frame (several requests become one)
 function S.MapRedraw()
     if redrawQueued then return end
 
@@ -288,6 +296,7 @@ function S.MapRedraw()
     C_Timer.After(0.1, function() redrawQueued = false; if not S.InCombat() then S.Safe("map", realRedraw) end end)
 end
 
+-- The playback bar under the world map
 local function buildBar()
     bar = CreateFrame("Frame", "SterlingQuestScrubber", WorldMapFrame, BackdropTemplateMixin and "BackdropTemplate" or nil)
 
@@ -354,6 +363,7 @@ local function buildBar()
     end)
 end
 
+-- Starts or stops playback
 function S.MapPlay(on)
     if not session then return end
 
@@ -365,6 +375,7 @@ function S.MapPlay(on)
     S.MapRedraw()
 end
 
+-- Which session the map shows
 function S.MapSetSession(sess)
     session = sess
     playT, playing = nil, false
@@ -372,12 +383,14 @@ function S.MapSetSession(sess)
     S.MapRedraw()
 end
 
+-- Opens or closes the map (Sterling's own map window when it's there)
 function S.MapToggle()
     if S.ViewerToggle then return S.ViewerToggle() end
 
     return S.MapToggleWorld()
 end
 
+-- Shows the session on the game's world map
 function S.MapToggleWorld()
     if not WorldMapFrame then return end
 
@@ -395,6 +408,7 @@ function S.MapToggleWorld()
     C_Timer.After(0.1, function() showMap(sessionMapAt(playT or session.start)); S.MapRedraw() end)
 end
 
+-- Hooks the world map so the overlay follows it
 function S.MapInit()
     if not WorldMapFrame then return end
 
@@ -445,6 +459,7 @@ local function yardsPerUnit(map)
     return east, south
 end
 
+-- How many yards the minimap shows from centre to edge, for the current zoom
 local function minimapRadius()
     local zoom = Minimap and Minimap.GetZoom and Minimap:GetZoom() or 0
     local indoors = GetCVar and GetCVar("minimapZoom") ~= GetCVar("minimapInsideZoom")
@@ -453,16 +468,18 @@ local function minimapRadius()
     return r[zoom + 1] or 233.33
 end
 
+-- The next free line on the minimap overlay
 local function mmGetLine()
     mmLineN = mmLineN + 1
 
-    local t = mmLines[mmLineN]
+    local line = mmLines[mmLineN]
 
-    if not t then t = mmOverlay:CreateTexture(nil, "ARTWORK"); t:SetTexture(LINE_TEX); t:SetVertexColor(.23, .48, 1, .9); mmLines[mmLineN] = t end
+    if not line then line = mmOverlay:CreateTexture(nil, "ARTWORK"); line:SetTexture(LINE_TEX); line:SetVertexColor(.23, .48, 1, .9); mmLines[mmLineN] = line end
 
-    return t
+    return line
 end
 
+-- Draws the trail on the minimap
 function S.MinimapRedraw()
     if not mmOverlay then return end
 
@@ -492,6 +509,7 @@ function S.MinimapRedraw()
     local rot = (GetCVar and GetCVar("rotateMinimap") == "1" and GetPlayerFacing) and GetPlayerFacing() or 0
     local cosr, sinr = math.cos(rot), math.sin(rot)
 
+    -- A world position as a spot on the minimap (rotating with it when it rotates)
     local function project(x, y)
         local dx, dy = (x - px) * ux, (y - py) * uy   -- yards east, yards south
 
@@ -505,22 +523,22 @@ function S.MinimapRedraw()
     local limit = radius * 0.92
     local prev, prevIn
 
-    for _, p in ipairs(sess.trail) do
-        if p.map == map then
-            local sx, sy, d = project(p.x, p.y)
+    for _, point in ipairs(sess.trail) do
+        if point.map == map then
+            local sx, sy, d = project(point.x, point.y)
             local inside = d < limit
 
-            if p.brk then prev = nil end
+            if point.brk then prev = nil end
             if prev and prevIn and inside then DrawLine(mmGetLine(), mmOverlay, prev.sx, prev.sy, sx, sy, 3) end
 
             prev, prevIn = { sx = sx, sy = sy }, inside
         else prev = nil end
     end
 
-    local st = S.steps[S.CurrentIndex()]
+    local step = S.steps[S.CurrentIndex()]
 
-    if st and st.map == map and st.x then
-        local sx, sy, d = project(st.x, st.y)
+    if step and step.map == map and step.x then
+        local sx, sy, d = project(step.x, step.y)
 
         if d < limit then
             if not mmPin then
@@ -535,6 +553,7 @@ function S.MinimapRedraw()
     end
 end
 
+-- The minimap trail overlay
 local function MinimapInit()
     if not Minimap then return end
 
@@ -558,6 +577,7 @@ end
 
 local oldMapInit = S.MapInit
 
+-- Adds the minimap overlay to the map setup
 function S.MapInit()
     if oldMapInit then oldMapInit() end
 

@@ -9,6 +9,7 @@ local welcome, coach, help, spot
 local tour                      -- { steps = {...}, i = n } while the tour runs
 local pendingWelcome, pendingTip
 
+-- The account-wide guide state (welcome shown, tour done, tips seen), created on first use
 local function acct()
     if type(SterlingQuestAccountDB) ~= "table" then SterlingQuestAccountDB = {} end
 
@@ -39,14 +40,15 @@ local function Spot(target, pad)
         spot = CreateFrame("Frame", nil, main)
         spot.fill = spot:CreateTexture(nil, "BACKGROUND"); spot.fill:SetAllPoints(); spot.fill:SetColorTexture(1, .82, 0, .07)
 
+        -- One side of the gold spotlight frame
         local function edge(p1, p2, w, h)
-            local t = spot:CreateTexture(nil, "OVERLAY"); t:SetColorTexture(1, .82, 0, .95)
+            local texture = spot:CreateTexture(nil, "OVERLAY"); texture:SetColorTexture(1, .82, 0, .95)
 
-            t:SetPoint(p1); t:SetPoint(p2)
+            texture:SetPoint(p1); texture:SetPoint(p2)
 
-            if w then t:SetWidth(w) else t:SetHeight(h) end
+            if w then texture:SetWidth(w) else texture:SetHeight(h) end
 
-            return t
+            return texture
         end
 
         edge("TOPLEFT", "TOPRIGHT", nil, 2); edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 2)
@@ -71,37 +73,39 @@ end
 ---------------------------------------------------------------------------
 local COACH_W = 270
 
+-- The small window that explains each tour step
 local function buildCoach()
     coach = Window("SterlingQuestCoach", COACH_W, 190, "Tour")
 
-    local f = coach
+    local frame = coach
 
-    f.step = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); f.step:SetPoint("TOPLEFT", 14, -38); f.step:SetTextColor(S.LabelColor())
-    f.dots = {}
+    frame.step = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); frame.step:SetPoint("TOPLEFT", 14, -38); frame.step:SetTextColor(S.LabelColor())
+    frame.dots = {}
 
     for i = 1, 3 do
-        local d = f:CreateTexture(nil, "ARTWORK"); d:SetSize(7, 7); d:SetPoint("TOPRIGHT", -14 - (3 - i) * 12, -40)
+        local texture = frame:CreateTexture(nil, "ARTWORK"); texture:SetSize(7, 7); texture:SetPoint("TOPRIGHT", -14 - (3 - i) * 12, -40)
 
-        f.dots[i] = d
+        frame.dots[i] = texture
     end
 
-    f.headline = f:CreateFontString(nil, "OVERLAY", "GameFontNormal"); f.headline:SetPoint("TOPLEFT", 14, -56); f.headline:SetPoint("RIGHT", -14, 0); f.headline:SetJustifyH("LEFT"); f.headline:SetTextColor(S.TR, S.TG, S.TB)
-    f.body = f:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); f.body:SetPoint("TOPLEFT", 14, -76); f.body:SetWidth(COACH_W - 28); f.body:SetJustifyH("LEFT"); f.body:SetTextColor(.78, .8, .86)
+    frame.headline = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"); frame.headline:SetPoint("TOPLEFT", 14, -56); frame.headline:SetPoint("RIGHT", -14, 0); frame.headline:SetJustifyH("LEFT"); frame.headline:SetTextColor(S.TR, S.TG, S.TB)
+    frame.body = frame:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); frame.body:SetPoint("TOPLEFT", 14, -76); frame.body:SetWidth(COACH_W - 28); frame.body:SetJustifyH("LEFT"); frame.body:SetTextColor(.78, .8, .86)
 
-    if f.body.SetSpacing then f.body:SetSpacing(2) end
+    if frame.body.SetSpacing then frame.body:SetSpacing(2) end
 
-    f.next = Button(f, "Next", 64); f.next:SetPoint("BOTTOMRIGHT", -14, 10)
-    f.back = Button(f, "Back", 54); f.back:SetPoint("RIGHT", f.next, "LEFT", -4, 0)
-    f.skip = Button(f, "Skip", 54); f.skip:SetPoint("BOTTOMLEFT", 14, 10)
+    frame.next = Button(frame, "Next", 64); frame.next:SetPoint("BOTTOMRIGHT", -14, 10)
+    frame.back = Button(frame, "Back", 54); frame.back:SetPoint("RIGHT", frame.next, "LEFT", -4, 0)
+    frame.skip = Button(frame, "Skip", 54); frame.skip:SetPoint("BOTTOMLEFT", 14, 10)
 
     -- closing it with the X (or Escape) ends whatever it was doing
-    f:HookScript("OnHide", function()
+    frame:HookScript("OnHide", function()
         Spot(nil)
 
         if tour then tour = nil; if acct().tour ~= true then acct().tour = "skipped" end end
     end)
 end
 
+-- Sizes the tour window to its text
 local function fitCoach()
     local h = math.max(12, coach.body:GetStringHeight() or 12)
 
@@ -112,53 +116,55 @@ end
 local STEPS =
 {
     { tab = "sync", title = "Add a friend",
-        target = function(pg) return pg.add end, pad = 4,
+        target = function(page) return page.add end, pad = 4,
         body = "Click |cffffd100+ Add|r and type a friend's character name, or pick someone Sterling found in your party, guild or friends list.\n\nThey get a prompt to accept. After that your quest logs sync by themselves whenever you're both online. Never online together? Right-click a partner for Offline sync." },
     { tab = "catchup", title = "Catch up",
-        target = function(pg) return pg.zoneBox end, pad = 3,
+        target = function(page) return page.zoneBox end, pad = 3,
         body = "Pick the friend and a zone. Sterling lists the quests they did there that you haven't, sorted into what you can pick up now, what's in your log and what's still locked.\n\n|cffffd100Start path|r turns that list into steps.",
         extra = function() if not S.HasAddon("Questie") then return "\n\n|cfff3c56bThis tab needs Questie, which isn't installed.|r" end end },
     { tab = "path", title = "Follow the path",
-        target = function(pg) return pg.card end, pad = 3,
+        target = function(page) return page.card end, pad = 3,
         body = "The card is your next step. |cffffd100Auto arrow|r points you at it, |cffffd100Done|r skips one Sterling can't see finish, and the list underneath is everything still to come.\n\nYou can also record your own run here and send it to a friend to follow." },
 }
 
+-- Shows the current tour step: switches tab, moves the spotlight, fills in the text
 local function showStep()
     if not tour then return end
     if not coach then buildCoach() end
 
-    local st = tour.steps[tour.i]
+    local tourStep = tour.steps[tour.i]
     local n = #tour.steps
 
-    S.UI_Tab(st.tab)
+    S.UI_Tab(tourStep.tab)
 
-    local pg = S.UI_Page(st.tab)
-    local f = coach
+    local page = S.UI_Page(tourStep.tab)
+    local frame = coach
 
-    f.title:SetText("Tour")
-    f.step:SetText("Step " .. tour.i .. " of " .. n); f.step:Show()
+    frame.title:SetText("Tour")
+    frame.step:SetText("Step " .. tour.i .. " of " .. n); frame.step:Show()
 
-    for i, d in ipairs(f.dots) do
-        d:SetShown(i <= n)
+    for i, dot in ipairs(frame.dots) do
+        dot:SetShown(i <= n)
 
-        if i == tour.i then d:SetColorTexture(1, .82, 0, 1) else d:SetColorTexture(.45, .43, .38, 1) end
+        if i == tour.i then dot:SetColorTexture(1, .82, 0, 1) else dot:SetColorTexture(.45, .43, .38, 1) end
     end
 
-    f.headline:SetText(st.title)
-    f.body:SetText(st.body .. ((st.extra and st.extra()) or ""))
-    f.skip:SetText("Skip"); f.skip:Show(); f.skip:SetScript("OnClick", function() S.TourEnd(false) end)
-    f.back:SetShown(tour.i > 1); f.back:SetScript("OnClick", function() if tour and tour.i > 1 then tour.i = tour.i - 1; showStep() end end)
-    f.next:SetText(tour.i == n and "Finish" or "Next"); f.next:SetWidth(64)
-    f.next:SetScript("OnClick", function()
+    frame.headline:SetText(tourStep.title)
+    frame.body:SetText(tourStep.body .. ((tourStep.extra and tourStep.extra()) or ""))
+    frame.skip:SetText("Skip"); frame.skip:Show(); frame.skip:SetScript("OnClick", function() S.TourEnd(false) end)
+    frame.back:SetShown(tour.i > 1); frame.back:SetScript("OnClick", function() if tour and tour.i > 1 then tour.i = tour.i - 1; showStep() end end)
+    frame.next:SetText(tour.i == n and "Finish" or "Next"); frame.next:SetWidth(64)
+    frame.next:SetScript("OnClick", function()
         if not tour then return end
         if tour.i >= #tour.steps then S.TourEnd(true) else tour.i = tour.i + 1; showStep() end
     end)
 
     fitCoach()
-    f:Show()
-    Spot(pg and st.target(pg) or nil, st.pad)
+    frame:Show()
+    Spot(page and tourStep.target(page) or nil, tourStep.pad)
 end
 
+-- Starts the tour (after combat, if you're fighting)
 function S.TourStart()
     if S.InCombat() then msg("The tour starts when you're out of combat.") pendingTip = "tour" return end
     if welcome then welcome:Hide() end
@@ -178,6 +184,7 @@ function S.TourStart()
     showStep()
 end
 
+-- Ends the tour and hides the spotlight
 function S.TourEnd(finished)
     local was = tour
 
@@ -188,7 +195,7 @@ function S.TourEnd(finished)
     if finished then
         a.tour = true
 
-        for _, st in ipairs(was and was.steps or {}) do a.hints[st.tab] = true end   -- no tip needed for tabs the tour covered
+        for _, step in ipairs(was and was.steps or {}) do a.hints[step.tab] = true end   -- no tip needed for tabs the tour covered
 
         msg("That's the tour. The |cffffd100?|r in the title bar opens Help any time.")
     elseif a.tour ~= true then a.tour = "skipped" end
@@ -208,37 +215,38 @@ local TIPS =
     sync = { "Sync", "Your partners. + Add invites a friend; they accept and your quest logs stay in step whenever you're both online. Right-click a partner for Compare, Offline sync and more." },
 }
 
+-- Shows a one-time tip for a tab
 local function showTip(key)
     local tip = TIPS[key]
 
     if not tip then return end
     if not coach then buildCoach() end
 
-    local f = coach
+    local frame = coach
 
-    f.title:SetText("Tip")
-    f.step:Hide(); for _, d in ipairs(f.dots) do d:Hide() end
-    f.headline:SetText(tip[1]); f.body:SetText(tip[2])
-    f.back:Hide()
-    f.next:SetText("Got it"); f.next:SetWidth(64); f.next:SetScript("OnClick", function() f:Hide() end)
+    frame.title:SetText("Tip")
+    frame.step:Hide(); for _, dot in ipairs(frame.dots) do dot:Hide() end
+    frame.headline:SetText(tip[1]); frame.body:SetText(tip[2])
+    frame.back:Hide()
+    frame.next:SetText("Got it"); frame.next:SetWidth(64); frame.next:SetScript("OnClick", function() frame:Hide() end)
 
     local toured = acct().tour == true
 
-    f.skip:SetShown(not toured); f.skip:SetText("Tour"); f.skip:SetScript("OnClick", function() f:Hide(); S.TourStart() end)
+    frame.skip:SetShown(not toured); frame.skip:SetText("Tour"); frame.skip:SetScript("OnClick", function() frame:Hide(); S.TourStart() end)
 
-    f.tipFor = key
+    frame.tipFor = key
 
     fitCoach()
-    f:Show()
+    frame:Show()
 end
 
 -- Called whenever a tab is opened.
 function S.GuideTab(key)
     if tour then
         -- you clicked a tab mid-tour: go to that tab's step if it has one
-        local st = tour.steps[tour.i]
+        local tourStep = tour.steps[tour.i]
 
-        if st and st.tab ~= key then
+        if tourStep and tourStep.tab ~= key then
             for i, other in ipairs(tour.steps) do if other.tab == key then tour.i = i; showStep(); return end end
 
             Spot(nil)
@@ -270,12 +278,13 @@ end
 ---------------------------------------------------------------------------
 local WELCOME_W = 400
 
+-- The welcome page shown once per account
 local function buildWelcome()
     welcome = Window("SterlingQuestWelcome", WELCOME_W, 380, "Welcome")
 
-    local f = welcome
-    local inset = S.Inset(f); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6) end
-    local page = CreateFrame("Frame", nil, f); page:SetPoint("TOPLEFT", 12, -38); page:SetPoint("BOTTOMRIGHT", -12, 12)
+    local frame = welcome
+    local inset = S.Inset(frame); if inset then inset:SetPoint("TOPLEFT", 6, -30); inset:SetPoint("BOTTOMRIGHT", -6, 6) end
+    local page = CreateFrame("Frame", nil, frame); page:SetPoint("TOPLEFT", 12, -38); page:SetPoint("BOTTOMRIGHT", -12, 12)
 
     if inset then page:SetFrameLevel(inset:GetFrameLevel() + 2) end
 
@@ -299,19 +308,19 @@ local function buildWelcome()
         { "Follow a path", "Step by step, with an arrow on the next stop. Record your own run and send it to a friend." },
     }
 
-    for i, it in ipairs(ITEMS) do
+    for i, item in ipairs(ITEMS) do
         local num = Box(page, nil, true); num:SetSize(20, 20); num:SetPoint("TOPLEFT", 4, y - 1)
 
         if num.SetBackdropColor then num:SetBackdropColor(1, .82, 0, .14); num:SetBackdropBorderColor(1, .82, 0, .45) end
 
         num.t = num:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall"); num.t:SetPoint("CENTER"); num.t:SetText(tostring(i)); num.t:SetTextColor(1, .82, 0)
 
-        local t = page:CreateFontString(nil, "OVERLAY", "GameFontNormal"); t:SetPoint("TOPLEFT", 34, y); t:SetText(it[1]); t:SetTextColor(S.TR, S.TG, S.TB)
-        local d = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); d:SetPoint("TOPLEFT", 34, y - 16); d:SetWidth(W - 38); d:SetJustifyH("LEFT"); d:SetTextColor(.7, .74, .84)
+        local label = page:CreateFontString(nil, "OVERLAY", "GameFontNormal"); label:SetPoint("TOPLEFT", 34, y); label:SetText(item[1]); label:SetTextColor(S.TR, S.TG, S.TB)
+        local label = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); label:SetPoint("TOPLEFT", 34, y - 16); label:SetWidth(W - 38); label:SetJustifyH("LEFT"); label:SetTextColor(.7, .74, .84)
 
-        d:SetText(it[2])
+        label:SetText(item[2])
 
-        y = y - 16 - math.max(24, (d:GetStringHeight() or 24)) - 10
+        y = y - 16 - math.max(24, (label:GetStringHeight() or 24)) - 10
     end
 
     y = y - 2
@@ -319,12 +328,12 @@ local function buildWelcome()
     S.SectionBar(page, "Works with", y, W)
 
     y = y - 28
-    f.works = {}
+    frame.works = {}
 
     for i, w in ipairs(S.WORKS_WITH) do
-        local l = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); l:SetPoint("TOPLEFT", 4, y); l:SetWidth(W - 8); l:SetJustifyH("LEFT"); l:SetWordWrap(false)
+        local label = page:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); label:SetPoint("TOPLEFT", 4, y); label:SetWidth(W - 8); label:SetJustifyH("LEFT"); label:SetWordWrap(false)
 
-        f.works[i] = l
+        frame.works[i] = label
         y = y - 16
     end
 
@@ -334,24 +343,26 @@ local function buildWelcome()
 
     y = y - 2 - math.max(12, foot:GetStringHeight() or 12)
 
-    f:SetHeight(38 + (-y) + 16 + 21 + 12)   -- title, content, gap, buttons, bottom margin
+    frame:SetHeight(38 + (-y) + 16 + 21 + 12)   -- title, content, gap, buttons, bottom margin
 
     -- centred pair, like every other pop-up
-    f.go = Button(page, "Take the tour", 110); f.later = Button(page, "Skip for now", 100)
+    frame.go = Button(page, "Take the tour", 110); frame.later = Button(page, "Skip for now", 100)
 
-    f.go:SetPoint("BOTTOMRIGHT", page, "BOTTOM", -3, 0); f.later:SetPoint("BOTTOMLEFT", page, "BOTTOM", 3, 0)
-    f.go:SetScript("OnClick", function() S.TourStart() end)
-    f.later:SetScript("OnClick", function() f:Hide(); if S.UI_Main() and S.UI_Main():IsShown() then S.GuideTab(S.UI_CurrentTab()) end end)
+    frame.go:SetPoint("BOTTOMRIGHT", page, "BOTTOM", -3, 0); frame.later:SetPoint("BOTTOMLEFT", page, "BOTTOM", 3, 0)
+    frame.go:SetScript("OnClick", function() S.TourStart() end)
+    frame.later:SetScript("OnClick", function() frame:Hide(); if S.UI_Main() and S.UI_Main():IsShown() then S.GuideTab(S.UI_CurrentTab()) end end)
 
-    f.refresh = function()
+    -- Ticks or crosses for the add-ons Sterling works with
+    frame.refresh = function()
         for i, w in ipairs(S.WORKS_WITH) do
             local has = S.HasAddon(w.key)
 
-            f.works[i]:SetText(S.Mark(has and "good" or "warn", true) .. S.TEXT_HEX .. w.name .. "|r  " .. (has and "|cff7ee2a2installed|r" or "|cfff3c56bnot installed|r") .. "  |cff8a93a8" .. (w.key == "Questie" and "Catch-up, quest names, status on quest givers" or "the arrow to your next step") .. "|r")
+            frame.works[i]:SetText(S.Mark(has and "good" or "warn", true) .. S.TEXT_HEX .. w.name .. "|r  " .. (has and "|cff7ee2a2installed|r" or "|cfff3c56bnot installed|r") .. "  |cff8a93a8" .. (w.key == "Questie" and "Catch-up, quest names, status on quest givers" or "the arrow to your next step") .. "|r")
         end
     end
 end
 
+-- Opens the welcome page
 function S.UI_Welcome()
     if not welcome then buildWelcome() end
 
@@ -371,6 +382,7 @@ function S.GuideLogin()
     S.UI_Welcome()
 end
 
+-- Shows a welcome or tip that had to wait for the end of a fight
 function S.GuideAfterCombat()
     if pendingWelcome then pendingWelcome = nil; S.GuideLogin() end
     if pendingTip == "tour" then pendingTip = nil; S.TourStart()
@@ -522,6 +534,7 @@ local HELP =
 
 local HELP_W, HELP_H, NAV_W = 480, 560, 128   -- the same size as Options, so it fits beside the main window the same way
 
+-- Shows one Help section and highlights its name on the left
 local function helpShow(key)
     local f = help
     local sec
@@ -532,18 +545,19 @@ local function helpShow(key)
     f.key = sec[1]
 
     for _, b in ipairs(f.nav) do
-        local on = b.key == sec[1]
+        local selected = b.key == sec[1]
 
-        b.sel:SetShown(on); b.rule:SetShown(on)
+        b.sel:SetShown(selected); b.rule:SetShown(selected)
 
-        if on then b.text:SetTextColor(S.Accent()) else b.text:SetTextColor(.78, .8, .86) end
+        if selected then b.text:SetTextColor(S.Accent()) else b.text:SetTextColor(.78, .8, .86) end
     end
 
-    for _, l in ipairs(f.lines) do l:Hide() end
+    for _, line in ipairs(f.lines) do line:Hide() end
 
     local W = f.textW
     local y, n = -2, 0
 
+    -- The next free line of text in the Help window
     local function line(font)
         n = n + 1
 
@@ -593,6 +607,7 @@ local function helpShow(key)
     f.state:SetShown(trouble); f.traffic:SetShown(trouble)
 end
 
+-- The Help window: section list on the left, text on the right
 local function buildHelp()
     help = Window("SterlingQuestHelp", HELP_W, HELP_H, "Sterling Quest Sync help")
 
@@ -606,17 +621,17 @@ local function buildHelp()
     f.nav = {}
 
     for i, sec in ipairs(HELP) do
-        local b = CreateFrame("Button", nil, page); b:SetSize(NAV_W, 22); b:SetPoint("TOPLEFT", 0, -(i - 1) * 24)
+        local button = CreateFrame("Button", nil, page); button:SetSize(NAV_W, 22); button:SetPoint("TOPLEFT", 0, -(i - 1) * 24)
 
-        b.key = sec[1]
-        b.hl = b:CreateTexture(nil, "HIGHLIGHT"); b.hl:SetAllPoints(); b.hl:SetColorTexture(S.AR, S.AG, S.AB, .12)
-        b.sel = b:CreateTexture(nil, "BACKGROUND"); b.sel:SetAllPoints(); b.sel:SetColorTexture(S.AR, S.AG, S.AB, .14); b.sel:Hide()
-        b.rule = b:CreateTexture(nil, "ARTWORK"); b.rule:SetPoint("TOPLEFT"); b.rule:SetPoint("BOTTOMLEFT"); b.rule:SetWidth(3); b.rule:SetColorTexture(1, .76, .2, 1); b.rule:Hide()
-        b.text = b:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); b.text:SetPoint("LEFT", 10, 0); b.text:SetPoint("RIGHT", -4, 0); b.text:SetJustifyH("LEFT"); b.text:SetWordWrap(false); b.text:SetText(sec[2])
+        button.key = sec[1]
+        button.hl = button:CreateTexture(nil, "HIGHLIGHT"); button.hl:SetAllPoints(); button.hl:SetColorTexture(S.AR, S.AG, S.AB, .12)
+        button.sel = button:CreateTexture(nil, "BACKGROUND"); button.sel:SetAllPoints(); button.sel:SetColorTexture(S.AR, S.AG, S.AB, .14); button.sel:Hide()
+        button.rule = button:CreateTexture(nil, "ARTWORK"); button.rule:SetPoint("TOPLEFT"); button.rule:SetPoint("BOTTOMLEFT"); button.rule:SetWidth(3); button.rule:SetColorTexture(1, .76, .2, 1); button.rule:Hide()
+        button.text = button:CreateFontString(nil, "OVERLAY", S.FONT_SMALL); button.text:SetPoint("LEFT", 10, 0); button.text:SetPoint("RIGHT", -4, 0); button.text:SetJustifyH("LEFT"); button.text:SetWordWrap(false); button.text:SetText(sec[2])
 
-        b:SetScript("OnClick", function() helpShow(sec[1]) end)
+        button:SetScript("OnClick", function() helpShow(sec[1]) end)
 
-        f.nav[i] = b
+        f.nav[i] = button
     end
 
     local div = page:CreateTexture(nil, "ARTWORK"); div:SetPoint("TOPLEFT", NAV_W + 7, 0); div:SetPoint("BOTTOMLEFT", NAV_W + 7, 28); div:SetWidth(1); div:SetColorTexture(1, 1, 1, .08)
@@ -642,11 +657,11 @@ local function buildHelp()
     f.traffic = Button(page, "Sync traffic", 92); f.traffic:SetPoint("BOTTOMRIGHT", 0, 0)
 
     f.traffic:SetScript("OnClick", function()
-        local t = S.sync and S.sync.trace or {}
+        local trace = S.sync and S.sync.trace or {}
 
-        msg("Last " .. #t .. " sync messages (newest first). Refused by the game so far: " .. tostring(S.sync and S.sync.throttled or 0) .. ", missing-part requests answered: " .. tostring(S.sync and S.sync.partsResent or 0) .. ".")
+        msg("Last " .. #trace .. " sync messages (newest first). Refused by the game so far: " .. tostring(S.sync and S.sync.throttled or 0) .. ", missing-part requests answered: " .. tostring(S.sync and S.sync.partsResent or 0) .. ".")
 
-        for i = 1, #t do DEFAULT_CHAT_FRAME:AddMessage("|cff8a93a8  " .. t[i] .. "|r") end
+        for i = 1, #trace do DEFAULT_CHAT_FRAME:AddMessage("|cff8a93a8  " .. trace[i] .. "|r") end
     end)
 
     f.state = Button(page, "Sync state", 84); f.state:SetPoint("RIGHT", f.traffic, "LEFT", -4, 0)
@@ -654,6 +669,7 @@ local function buildHelp()
     f.state:SetScript("OnClick", function() S.PrintSyncState() end)
 end
 
+-- Opens Help, at a section if one is given
 function S.UI_Help(key)
     if not help then buildHelp() end
 
