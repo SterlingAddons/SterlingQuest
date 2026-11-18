@@ -3,8 +3,9 @@
 ## Notes: Sync quest logs with friends, catch up on what they have done, and follow a recorded path with an arrow, a map trail and playback. Works with Questie and TomTom.
 ## Author: Sterling
 ## X-Website: https://github.com/SterlingAddons/SterlingQuest
-## Version: 0.3.19
-## X-Build: 319000
+## X-Curse-Project-ID: 1813916
+## Version: 0.3.19.01
+## X-Build: 319001
 ## X-Credits: Works with Questie (the Questie team) and TomTom (Cladhaire). Bundles ChatThrottleLib (Mikk), LibDeflate (Haoqian He) and LibStub.
 ## IconTexture: Interface\AddOns\Sterling\Media\icon
 ## SavedVariables: SterlingQuestAccountDB
