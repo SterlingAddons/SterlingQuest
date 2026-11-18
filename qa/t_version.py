@@ -43,8 +43,8 @@ def state(theirs):
     return A.S.VersionState("Brannoc Ashvale")[0]
 
 
-check("partner on the release this build started from shows as older", state("0.3.17") == "older")
-check("partner on the next release shows as newer", state("0.3.18") == "newer")
+check("partner on an older release shows as older", state("0.3.16") == "older")
+check("partner on a later release shows as newer", state("0.99.0") == "newer")
 check("partner on the same internal build is the same", state(me) == "same")
 
 # What a copy from before this change makes of a four-part version: its BuildOf (0.3.17) is copied here as it was.
