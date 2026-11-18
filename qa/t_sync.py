@@ -10,7 +10,7 @@ A = sim.Player("Kaelith Emberfall", [(188, "Tiger Mastery"), (200, "Raptor Maste
 B = sim.Player("Brannoc Ashvale", [(200, "Raptor Mastery")], [185, 186, 187, 188] + list(range(1000, 1700)), account=ACC, level=39)
 A.S.AddPartner("Brannoc Ashvale", True); B.S.AddPartner("Kaelith Emberfall", True)
 A.lua('SterlingQuestDB.opts.chat_sync = 1'); B.lua('SterlingQuestDB.opts.chat_sync = 1')
-check("versions: build from toc", A.S.BUILD == 318000 and A.S.BuildOf("0.2.30") == 230000)
+check("versions: build from toc", A.S.BUILD == A.S.BuildOf(A.S.ADDON_VER) and A.S.BuildOf("0.2.30") == 230000)
 check("BuildOf old scheme", A.S.BuildOf("6.29") == 229000 and A.S.BuildOf("5.84") == 184000 and A.S.BuildOf("6.0") == 200000 and A.S.BuildOf("5.37") == 137000)
 check("BuildOf future", A.S.BuildOf("0.3.0") == 300000 and A.S.BuildOf("1.0.0") == 10000000 and A.S.BuildOf("0.2.31") == 231000)
 check("CompareVer 6.29 < 0.2.30 < 0.2.31", A.S.CompareVer("6.29", "0.2.30") == -1 and A.S.CompareVer("0.2.31", "0.2.30") == 1 and A.S.CompareVer("0.2.30", "0.2.30") == 0)

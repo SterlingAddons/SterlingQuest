@@ -36,6 +36,27 @@ R.L.eval('function(S) S.SetLegs({ { n = 1, title = "Real leg", steps = { { kind 
 R.L.eval('function(S) S.UI_Toggle(true); S.UI_Tab("sync"); S.UI_Update() end')(R.S)
 R.lua('SlashCmdList.STERLINGQUEST("testmode")')
 check("Sessions: three made-up sessions", R.ev('#SterlingQuestDB.sessions') == 3)
+# The made-up sessions look like real recordings in Stranglethorn (0.3.18.01): on its classic map, on land, events on the trail
+geo = R.L.eval('''function()
+    local onMap, onLand, near, events = true, true, true, 0
+    for _, s in ipairs(SterlingQuestDB.sessions) do
+        for _, p in ipairs(s.trail) do
+            if p.map ~= 1434 then onMap = false end
+            if p.x < 24 or p.x > 42 or p.y < 8 or p.y > 80 then onLand = false end
+        end
+        for _, e in ipairs(s.events) do
+            events = events + 1
+            if e.map ~= 1434 then onMap = false end
+            local best = 999
+            for _, p in ipairs(s.trail) do best = math.min(best, (p.x - e.x) ^ 2 + (p.y - e.y) ^ 2) end
+            if best > 1 then near = false end
+        end
+    end
+    return onMap, onLand, near, events
+end''')()
+check("Sessions: trails and events on the Stranglethorn map", geo[0])
+check("  trails stay on land (inside Stranglethorn's shore)", geo[1])
+check("  every event sits on its trail", geo[2])
 check("Path: following a made-up session", R.L.eval('function(S) return #S.steps end')(R.S) > 3, R.L.eval('function(S) return #S.steps end')(R.S))
 z = R.L.eval('function(S) local z = S.CatchupZones("Brannoc Ashvale"); return z and z[1] and z[1].count or 0 end')(R.S)
 check("Catch-up: quests to catch up on", z >= 5, z)

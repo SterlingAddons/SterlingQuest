@@ -4418,49 +4418,165 @@ local FAKE =
 local STV = { 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 568, 569, 572, 581, 582, 583, 584, 585, 586, 587, 596, 629 }
 local FAKE_MYDONE = { 185, 190, 194, 583 }   -- "your" finished quests while it's on, so Catch-up has plenty to show
 
-local function stvMap() local m = S.PlayerPos and S.PlayerPos(); return m or 1434 end
+-- Test mode sessions are drawn on the classic Stranglethorn Vale map, the one real recordings use there
+local STV_MAP = 1434
 
--- Two recorded sessions and one from a partner, built like real ones (events plus a trail).
-local function fakeSessions(now)
-    local map = stvMap()
+-- Places in Stranglethorn (x, y on that map), taken from real recordings and Questie
+local GROMGOL = { 32.5, 29.3 }
+local NIMBOYA = { 32.3, 27.9 }
+local KINWEELAY = { 32.0, 28.2 }
+local KRAZEK = { 27.0, 77.2 }
 
-    -- Test mode: one made-up session with its events and a trail
-    local function sess(id, name, char, startAgo, mins, lvl0, lvl1, evs, imported)
-        local t0 = now - startAgo
-        local s = { id = id, name = name, start = t0, stop = t0 + mins * 60, char = char, realm = "", lvl0 = lvl0, lvl1 = lvl1,
-                    events = {}, trail = {}, zones = { ["Stranglethorn Vale"] = true }, race = "Troll", color = "teal", display = char:match("^(%S+)"), imported = imported }
-        for i, event in ipairs(evs) do
-            local ev = { t = t0 + i * (mins * 60 / (#evs + 1)), map = map, x = 30 + (i * 7) % 25, y = 20 + (i * 11) % 40 }
+-- The flight between Grom'gol and Booty Bay, the way the taxi actually flies it
+local FLIGHT_TO_BB = { { 31.5, 28.4 }, { 30.7, 30.2 }, { 32.7, 33.3 }, { 34.5, 34.0 }, { 38.8, 40.5 }, { 36.7, 49.6 }, { 33.4, 50.5 }, { 32.3, 52.2 }, { 30.7, 68.0 }, { 28.9, 69.5 }, { 27.6, 74.4 }, { 27.4, 76.9 } }
 
-            for k, v in pairs(event) do ev[k] = v end
+-- Test mode: one made-up session built like a real recording. The route is a list of stops ({ x, y }, plus
+-- ev = events that happen there, fly = flown to, jump = arrived by hearth); the trail walks from stop to stop
+-- in short straight stretches with a little sway, the way a thinned real trail looks
+local function sess(now, id, name, char, startAgo, mins, lvl0, lvl1, route, imported)
+    local start = now - startAgo
+    local session = { id = id, name = name, start = start, stop = start + mins * 60, char = char, realm = "", lvl0 = lvl0, lvl1 = lvl1, events = {}, trail = {}, zones = { ["Stranglethorn Vale"] = true }, race = "Troll", color = "teal", display = char:match("^(%S+)"), imported = imported }
 
-            s.events[#s.events + 1] = ev
+    -- time is shared out by distance walked; a flight counts as a short walk, a hearth as none
+    local cost, total = {}, 0
+
+    for i = 2, #route do
+        local a, b = route[i - 1], route[i]
+        local d = math.sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2)
+
+        cost[i] = b.jump and 1 or (b.fly and d * .25 or d)
+        total = total + cost[i]
+    end
+
+    local perUnit = mins * 60 / math.max(1, total)
+    local t = start
+    local seed = 0
+
+    local function point(x, y, brk)
+        session.trail[#session.trail + 1] = { t = math.floor(t), map = STV_MAP, x = math.floor(x * 10 + .5) / 10, y = math.floor(y * 10 + .5) / 10, brk = brk }
+    end
+
+    for i, stop in ipairs(route) do
+        if i == 1 then
+            point(stop[1], stop[2])
+        else
+            local a = route[i - 1]
+            local dt = cost[i] * perUnit
+
+            if stop.jump then
+                t = t + dt
+
+                point(stop[1], stop[2], true)
+            else
+                -- a point every 2.5 or so, nudged sideways a little so the line doesn't look ruled
+                local d = math.sqrt((stop[1] - a[1]) ^ 2 + (stop[2] - a[2]) ^ 2)
+                local steps = math.max(1, math.floor(d / 2.5))
+                local nx, ny = -(stop[2] - a[2]) / math.max(d, .01), (stop[1] - a[1]) / math.max(d, .01)
+
+                for k = 1, steps do
+                    local f = k / steps
+
+                    seed = seed + 1
+
+                    local sway = (k < steps and not stop.fly) and math.sin(seed * 2.3) * .45 or 0
+
+                    t = t + dt / steps
+
+                    point(a[1] + (stop[1] - a[1]) * f + nx * sway, a[2] + (stop[2] - a[2]) * f + ny * sway)
+                end
+            end
         end
 
-        for i = 0, 40 do s.trail[#s.trail + 1] = { t = t0 + i * mins * 60 / 40, map = map, x = 32 + 18 * math.sin(i / 6), y = 25 + i * .8 } end
+        for j, event in ipairs(stop.ev or {}) do
+            local copy = { t = math.floor(t) + (j - 1) * 25, map = STV_MAP, x = stop[1], y = stop[2] }
 
-        return s
+            for k, v in pairs(event) do copy[k] = v end
+
+            session.events[#session.events + 1] = copy
+        end
     end
+
+    session.stop = math.floor(t) + 120   -- a little after the last event
+
+    return session
+end
+
+-- A route's stops for a flight from Grom'gol to Booty Bay, ending with what happens on landing
+local function flightToBootyBay(landing)
+    local stops = {}
+
+    for i, p in ipairs(FLIGHT_TO_BB) do stops[i] = { p[1], p[2], fly = true } end
+
+    stops[#stops].ev = landing
+
+    return stops
+end
+
+-- Joins route pieces into one list
+local function route(...)
+    local out = {}
+
+    for _, piece in ipairs({ ... }) do
+        if piece[1] and type(piece[1]) == "table" then
+            for _, stop in ipairs(piece) do out[#out + 1] = stop end
+        else
+            out[#out + 1] = piece
+        end
+    end
+
+    return out
+end
+
+-- Two recorded sessions and one from a partner, built like real ones (events plus a trail), all in Stranglethorn
+local function fakeSessions(now)
+    local function at(place, ev) return { place[1], place[2], ev = ev } end
+
+    -- Ruins of north Stranglethorn where the tigers and panthers are, and the raptor hills south of Grom'gol
+    local tigers = { { 31.2, 24.4 }, { 31.5, 19.4 }, { 32.6, 18.9 }, { 33.4, 17.6 }, { 32.7, 16.4 }, { 33.9, 15.8 }, { 34.8, 16.9 }, { 34.1, 18.2 }, { 35.2, 18.8 }, { 34.4, 19.9 } }
+    local panthers = { { 31.2, 24.4 }, { 31.5, 19.4 }, { 30.6, 16.1 }, { 29.4, 14.6 }, { 30.3, 13.2 }, { 29.2, 12.1 }, { 30.4, 11.0 }, { 31.3, 12.4 }, { 30.1, 13.9 }, { 28.9, 13.4 } }
+    local raptors = { { 33.6, 31.8 }, { 34.6, 34.4 }, { 33.5, 36.1 }, { 34.7, 37.3 }, { 33.8, 38.7 }, { 35.4, 39.2 }, { 35.9, 37.6 }, { 34.9, 36.0 } }
+
+    local function walk(list, last) local out = {} for i, p in ipairs(list) do out[i] = { p[1], p[2] } end out[#out].ev = last return out end
+    local function back(list) local out = {} for i = #list - 1, 1, -1 do out[#out + 1] = { list[i][1], list[i][2] } end return out end
+
+    local mine = route(
+        at(NIMBOYA, { { k = "A", q = 186, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "A", q = 191, quest = "Panther Mastery", npc = "Nimboya" }, { k = "A", q = 195, quest = "Raptor Mastery", npc = "Nimboya" } }),
+        walk(tigers, { { k = "O", q = 186, quest = "Tiger Mastery", text = "Stranglethorn Tiger: 10/10" } }),
+        back(tigers),
+        at({ 31.6, 25.6 }, { { k = "L", lvl = 42 } }),
+        at(NIMBOYA, { { k = "T", q = 186, quest = "Tiger Mastery", npc = "Nimboya" } }),
+        at(KINWEELAY, { { k = "A", q = 584, quest = "Bloodscalp Clan Heads", npc = "Kin'weelay" } }),
+        walk(panthers, { { k = "O", q = 191, quest = "Panther Mastery", text = "Panther: 10/10" } }),
+        back(panthers),
+        at(NIMBOYA, { { k = "T", q = 191, quest = "Panther Mastery", npc = "Nimboya" } }),
+        at(GROMGOL),
+        flightToBootyBay({ { k = "F", text = "Booty Bay", from = "Grom'gol", fmap = STV_MAP, fx = GROMGOL[1], fy = GROMGOL[2] } }),
+        at(KRAZEK, { { k = "L", lvl = 43 } }))
+
+    local errands = route(
+        at({ 27.4, 76.9 }),
+        at(KRAZEK, { { k = "A", q = 587, quest = "Up to Snuff", npc = "Krazek" } }),
+        at({ 26.7, 76.8 }), at({ 28.0, 76.5 }), at({ 27.1, 77.6 }),
+        at(KRAZEK, { { k = "T", q = 587, quest = "Up to Snuff", npc = "Krazek" } }),
+        { GROMGOL[1], GROMGOL[2] - .4, jump = true, ev = { { k = "H", text = "Grom'gol" } } },
+        at(KINWEELAY, { { k = "A", q = 596, quest = "Bloody Bone Necklaces", npc = "Kin'weelay" } }))
+
+    local elder = { { 31.2, 24.4 }, { 31.5, 19.4 }, { 34.2, 18.3 }, { 35.8, 14.8 }, { 37.1, 13.6 }, { 36.3, 15.4 }, { 37.5, 16.2 }, { 38.4, 14.9 }, { 37.2, 14.6 } }
+
+    local brans = route(
+        at(NIMBOYA, { { k = "A", q = 187, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "A", q = 192, quest = "Panther Mastery", npc = "Nimboya" }, { k = "A", q = 196, quest = "Raptor Mastery", npc = "Nimboya" } }),
+        walk(elder, { { k = "O", q = 187, quest = "Tiger Mastery", text = "Elder Stranglethorn Tiger: 10/10" } }),
+        back(elder),
+        at(NIMBOYA, { { k = "T", q = 187, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "A", q = 581, quest = "Hunt for Yenniku", npc = "Nimboya" } }),
+        walk(raptors),
+        back(raptors),
+        at(NIMBOYA, { { k = "T", q = 192, quest = "Panther Mastery", npc = "Nimboya" }, { k = "T", q = 196, quest = "Raptor Mastery", npc = "Nimboya" } }))
 
     return
     {
-        sess("test-1", "Grom'gol loop", FAKE_ME.char, 2 * 3600, 95, 41, 43,
-        {
-            { k = "A", q = 186, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "A", q = 191, quest = "Panther Mastery", npc = "Nimboya" },
-            { k = "A", q = 195, quest = "Raptor Mastery", npc = "Nimboya" }, { k = "O", q = 186, quest = "Tiger Mastery", text = "Stranglethorn Tiger: 10/10" },
-            { k = "T", q = 186, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "L", lvl = 42 }, { k = "A", q = 584, quest = "Bloodscalp Clan Heads", npc = "Kin'weelay" },
-            { k = "O", q = 191, quest = "Panther Mastery", text = "Panther: 10/10" }, { k = "T", q = 191, quest = "Panther Mastery", npc = "Nimboya" },
-            { k = "F", text = "Booty Bay", from = "Grom'gol" }, { k = "L", lvl = 43 } }),
-        sess("test-2", "Booty Bay errands", FAKE_ME.char, 26 * 3600, 48, 40, 41,
-        {
-            { k = "A", q = 587, quest = "Up to Snuff", npc = "Krazek" }, { k = "A", q = 596, quest = "Bloody Bone Necklaces", npc = "Kin'weelay" },
-            { k = "T", q = 587, quest = "Up to Snuff", npc = "Krazek" }, { k = "H", text = "Grom'gol" } }),
-        sess("test-3", "Bran's route", "Brannoc Ashvale", 5 * 3600, 70, 42, 44,
-        {
-            { k = "A", q = 187, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "A", q = 192, quest = "Panther Mastery", npc = "Nimboya" },
-            { k = "A", q = 196, quest = "Raptor Mastery", npc = "Nimboya" }, { k = "O", q = 187, quest = "Tiger Mastery", text = "Elder Stranglethorn Tiger: 10/10" },
-            { k = "T", q = 187, quest = "Tiger Mastery", npc = "Nimboya" }, { k = "A", q = 581, quest = "Hunt for Yenniku", npc = "Nimboya" },
-            { k = "T", q = 192, quest = "Panther Mastery", npc = "Nimboya" }, { k = "T", q = 196, quest = "Raptor Mastery", npc = "Nimboya" } }, true),
+        sess(now, "test-1", "Grom'gol loop", FAKE_ME.char, 2 * 3600, 95, 41, 43, mine),
+        sess(now, "test-2", "Booty Bay errands", FAKE_ME.char, 26 * 3600, 48, 40, 41, errands),
+        sess(now, "test-3", "Bran's route", "Brannoc Ashvale", 5 * 3600, 70, 42, 44, brans, true),
     }
 end
 
