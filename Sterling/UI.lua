@@ -3310,6 +3310,11 @@ local function UpdatePath(page)
     else main.recbtn.dot:SetColorTexture(.5, .5, .55, 1); main.recbtn.text:SetText("not recording") end
     main.recbtn:SetWidth(main.recbtn.text:GetStringWidth() + 16)
 
+    -- the small view's title row is shared with the timer: the version shows only while it fits beside it
+    local timerRight, verLeft = main.recbtn:GetRight(), main.ver:GetLeft()
+
+    main.ver:SetShown(not (main.recbtn:IsShown() and timerRight and verLeft and timerRight + 6 > verLeft))
+
     local sess = S.FindSession(SterlingQuestDB.following)
 
     page.clear:SetShown(sess ~= nil or S.catchupLabel ~= nil or #S.steps > 0)

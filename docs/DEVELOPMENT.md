@@ -19,6 +19,11 @@ All Lua in `Sterling/` and `qa/` follows one style (Sterling code rules, Nov 202
 
 `python3 qa/style.py Sterling/*.lua` applies it (formatting only: whitespace and line breaks, never the order of anything). `qa/t_style.py` (part of `all.sh`) fails if a file isn't formatted. To prove a change is formatting only, compare what the file compiles to: `diff <(qa/bytecode.sh old/Core.lua) <(qa/bytecode.sh Sterling/Core.lua)` must print nothing (needs `luac5.1`; the listing leaves out line numbers and local names).
 
+## Versions
+
+- Releases are `0.minor.patch` (0.3.17). Internal builds between releases add a fourth part, `0.3.17.01`, `0.3.17.02` ...; the next release drops it and bumps the patch (0.3.18). Only releases get a tag, a GitHub release and a `release.json`.
+- Every older/newer check goes through `S.BuildOf(version)`: minor x 100000 + patch x 1000 + internal, so 0.3.17 = 317000 < 0.3.17.03 = 317003 < 0.3.18 = 318000 (up to 999 internal builds fit). The toc's `## X-Build` carries the same number. `qa/t_version.py` checks the order and that copies from before 0.3.17.01 (which ignore the fourth part) still read these versions.
+
 ## WoW Forever addon restrictions (confirmed Nov 11)
 
 - Forever runs on the retail **Midnight** client with Midnight's addon rules.

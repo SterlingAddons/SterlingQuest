@@ -1015,10 +1015,15 @@ end
 S.ADDON_VER = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON, "Version")) or (GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version")) or "?"
 
 -- Build number: one number that only ever goes up, used for every "older / newer" check so the
--- visible version can be anything. It is worked out from the version text, so nothing extra travels:
---   0.2.30 -> 230, 0.3.0 -> 300 (the scheme from 0.2.30 on: minor * 100 + patch)
---   5.84 -> 184, 6.0 -> 200, 6.29 -> 229 (the old two-part numbers that came before)
---   1.0.0 and up -> 10000 and up
+-- visible version can be anything. It is worked out from the version text, so nothing extra travels.
+-- Released versions have three parts; internal builds add a fourth (0.3.17.01, 0.3.17.02 ...), which
+-- sorts after the release it started from and before the next one: 0.3.17 < 0.3.17.03 < 0.3.18.
+--   0.3.17 -> 317000, 0.3.17.03 -> 317003, 0.2.30 -> 230000 (minor * 100000 + patch * 1000 + internal,
+--   so up to 999 internal builds fit between two releases)
+--   5.84 -> 184000, 6.0 -> 200000, 6.29 -> 229000 (the old two-part numbers that came before)
+--   1.0.0 and up -> 10000000 and up
+-- Copies before 0.3.17.01 ignore the fourth part (and count 1000 times smaller), but they only ever
+-- compare versions with their own numbers, so the two scales never meet.
 -- The toc carries the same number as X-Build so the two can be checked against each other.
 function S.BuildOf(ver)
     if not ver then return nil end
@@ -1029,12 +1034,12 @@ function S.BuildOf(ver)
 
     if #p == 0 then return nil end
 
-    local a, b, c = p[1], p[2] or 0, p[3] or 0
+    local a, b, c, internal = p[1], p[2] or 0, p[3] or 0, p[4] or 0
 
-    if a == 0 then return b * 100 + c end
-    if a >= 5 and #p <= 2 then return (a - 4) * 100 + b end
+    if a == 0 then return (b * 100 + c) * 1000 + internal end
+    if a >= 5 and #p <= 2 then return ((a - 4) * 100 + b) * 1000 end
 
-    return a * 10000 + b * 100 + c
+    return (a * 10000 + b * 100 + c) * 1000 + internal
 end
 
 do
@@ -1662,7 +1667,7 @@ function S.SyncWith(who, mode, auto)
             local vnum = S.BuildOf(theirVer)
             local why
 
-            if vnum and vnum >= 137 then
+            if vnum and vnum >= 137000 then   -- 5.37
                 why = "They're on v" .. theirVer .. ", so it isn't the version. They may have zoned, logged out, or not gotten your messages. Hit Refresh, then try again."
             elseif theirVer then
                 why = "They're on v" .. theirVer .. ". Both of you need 5.37 or newer for this to finish reliably."
@@ -2498,7 +2503,7 @@ function S.AppOutbox()
         local lv = tonumber(UnitLevel("player")); if lv and lv >= 1 and lv <= 100 then entry.level = math.floor(lv) end
         local _, cls = UnitClass("player"); if type(cls) == "string" and cls:match("^%u+$") and #cls <= 16 then entry.class = cls end
         local rc = nameOK((UnitRace("player"))); if rc then entry.race = rc end
-        local v = tostring(S.ADDON_VER or ""); if appVerOK(v) then entry.sterling = v end
+        local v = tostring(S.ADDON_VER or ""); if appVerOK(v) or v:match("^%d+%.%d+%.%d+%.%d+$") then entry.sterling = v end   -- internal builds have a 4th part
     end
 
     local selfp = S.AppSelfPacket(); if selfp then entry.self = selfp end
