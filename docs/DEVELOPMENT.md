@@ -6,6 +6,19 @@ Notes kept while building Sterling Quest Sync (formerly Sterling Quest Tracker) 
 - Tests: `qa/`. Run `bash qa/all.sh` (Python 3 with `lupa` and `Pillow`). `qa/fixtures/sterling-6.29/` is an old build used to test that old and new copies still sync.
 - Releases: zipped `Sterling/` folder plus `release.json` (for WowUp) on the GitHub releases page. `python3 qa/zipcheck.py <zip>` checks a zip holds no runnable files.
 
+## Code style
+
+All Lua in `Sterling/` and `qa/` follows one style (Sterling code rules, Nov 2026):
+
+- 4 spaces per indent level, spaces only (`.editorconfig`).
+- A multi-line table's opening `{` goes on its own line (`local t =` then `{`); a call taking one becomes `f(` then `{`. Lua 5.1 refuses a line that starts with `(` after a call, so `f` then `({` isn't used.
+- A blank line after every multi-line block's `end` / `}` / `until`, unless more closing follows (`end`, `else`, `elseif`, `}`, `)`).
+- A statement that fits on one line (up to 160 characters) stays on one line.
+- Lines in a block are grouped by how they start (`local`, `if`, `return`, calls, assignments), with a blank line between groups. A comment stays with the code below it.
+- Never put code after a `--` comment on the same line.
+
+`python3 qa/style.py Sterling/*.lua` applies it (formatting only: whitespace and line breaks, never the order of anything). `qa/t_style.py` (part of `all.sh`) fails if a file isn't formatted. To prove a change is formatting only, compare what the file compiles to: `diff <(qa/bytecode.sh old/Core.lua) <(qa/bytecode.sh Sterling/Core.lua)` must print nothing (needs `luac5.1`; the listing leaves out line numbers and local names).
+
 ## WoW Forever addon restrictions (confirmed Nov 11)
 
 - Forever runs on the retail **Midnight** client with Midnight's addon rules.
