@@ -40,6 +40,8 @@ Everything here is open source under the MIT license: the add-on's code is in [`
 
 WowUp keeps it updated from then on. You can also download the zip from [Releases](https://github.com/SterlingAddons/SterlingQuest/releases) and unzip it into `_forever_\Interface\AddOns` (the folder is called `Sterling`).
 
+Using the **CurseForge app** instead? Search for Sterling Quest Sync, or open its [CurseForge page](https://www.curseforge.com/wow/addons/sterling-quest-sync). It updates from there too.
+
 ### First steps
 
 1. A welcome page opens at your first login. Take the tour, it's three steps.
